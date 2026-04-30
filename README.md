@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 宿曜タロット MVP
 
-## Getting Started
+Supabase Auth、暦データベース、宿曜算出、タロット大アルカナ1枚引き、OpenRouter LLM生成、結果チャットをまとめた Next.js MVP です。
 
-First, run the development server:
+## セットアップ
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+`.env.local` に Supabase と OpenRouter の値を設定してください。
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openrouter/free
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+OpenRouter の無料モデル名は変わることがあるため、MVPでは無料モデルを自動選択する `openrouter/free` を既定にしています。APIキー未設定でも、ローカルの定型文フォールバックで占い結果は表示されます。
+
+## Supabase
+
+Supabase SQL Editor で次を実行します。
+
+1. `supabase/schema.sql`
+2. `supabase/calendar_seed.sql`
+
+暦シードは `scripts/generate-calendar-seed.py` で生成しています。`lunardate` による 1900-2099 年の旧暦変換を使い、閏月も `is_leap_month` として保存します。
+
+```bash
+python3 -m pip install --user lunardate==0.2.2
+python3 scripts/generate-calendar-seed.py
+```
+
+## 開発
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 生成済みアセット
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+オリジナル大アルカナSVG 22枚は `public/tarot/` にあります。再生成する場合:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run generate:tarot
+```
 
-## Learn More
+GPT Image APIでPNGを生成して上書きする場合:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+OPENAI_API_KEY=... OPENAI_IMAGE_MODEL=gpt-image-1.5 npm run generate:tarot:gpt
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 検証
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run build
+```

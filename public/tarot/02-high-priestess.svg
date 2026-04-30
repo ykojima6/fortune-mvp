@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000" viewBox="0 0 440 700">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop stop-color="#050608"/>
+      <stop offset=".52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="18" y="18" width="404" height="664" rx="26" fill="url(#bg)" stroke="#c4b5fd" stroke-width="3"/>
+  <rect x="42" y="42" width="356" height="616" rx="18" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+  <text x="220" y="86" text-anchor="middle" fill="#c4b5fd" font-size="26" font-family="serif" letter-spacing="6">02</text>
+  <g filter="url(#glow)"><path fill="#c4b5fd" d="M246 120a78 78 0 1 0 0 156a62 62 0 1 1 0-156z"/></g>
+  <path d="M96 430 H344" stroke="#c4b5fd" stroke-opacity=".55"/>
+  <text x="220" y="488" text-anchor="middle" fill="#f8fafc" font-size="34" font-family="serif" letter-spacing="4">女教皇</text>
+  <text x="220" y="532" text-anchor="middle" fill="#c4b5fd" font-size="18" font-family="Arial, sans-serif" letter-spacing="3">HIGH PRIESTESS</text>
+  <text x="220" y="612" text-anchor="middle" fill="#94a3b8" font-size="13" font-family="Arial, sans-serif" letter-spacing="5">ORIGINAL ARCANA</text>
+</svg>

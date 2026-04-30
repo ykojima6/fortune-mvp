@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000" viewBox="0 0 440 700">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop stop-color="#050608"/>
+      <stop offset=".52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="18" y="18" width="404" height="664" rx="26" fill="url(#bg)" stroke="#fef08a" stroke-width="3"/>
+  <rect x="42" y="42" width="356" height="616" rx="18" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+  <text x="220" y="86" text-anchor="middle" fill="#fef08a" font-size="26" font-family="serif" letter-spacing="6">16</text>
+  <g filter="url(#glow)"><path stroke="#fef08a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" d="M170 315 L190 140 H250 L270 315 M185 185 H255 M200 135 L180 105 M240 135 L265 100"/></g>
+  <path d="M96 430 H344" stroke="#fef08a" stroke-opacity=".55"/>
+  <text x="220" y="488" text-anchor="middle" fill="#f8fafc" font-size="34" font-family="serif" letter-spacing="4">塔</text>
+  <text x="220" y="532" text-anchor="middle" fill="#fef08a" font-size="18" font-family="Arial, sans-serif" letter-spacing="3">THE TOWER</text>
+  <text x="220" y="612" text-anchor="middle" fill="#94a3b8" font-size="13" font-family="Arial, sans-serif" letter-spacing="5">ORIGINAL ARCANA</text>
+</svg>
