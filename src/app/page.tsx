@@ -338,6 +338,11 @@ export default function Home() {
                             ? `${revealedCard.name} / ${revealedSelection?.reversed ? "逆位置" : "正位置"}`
                             : "裏向きの22枚から1枚選んでください"}
                         </p>
+                        {busy && selectedDeckIndex !== null && (
+                          <div className="mt-3">
+                            <LoadingPulse compact />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -382,6 +387,9 @@ export default function Home() {
                           aria-pressed={revealed}
                         >
                           <div className="relative aspect-[3/5] w-full [perspective:900px]">
+                            {revealed && busy && (
+                              <span className="pointer-events-none absolute -inset-1 z-10 border border-cyan-200/70 shadow-[0_0_22px_rgba(103,232,249,0.35)]" />
+                            )}
                             <div
                               className={`absolute inset-0 transition-transform duration-500 [transform-style:preserve-3d] ${
                                 revealed ? "[transform:rotateY(180deg)]" : ""
@@ -473,13 +481,17 @@ export default function Home() {
                     </article>
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center text-center">
-                      <MessageCircle className="mb-5 h-12 w-12 text-cyan-100/50" />
-                      <h2 className="text-2xl font-semibold text-white">
-                        {busy ? "カードを展開しています" : "カードを1枚選んでください"}
-                      </h2>
-                      <p className="mt-3 max-w-md text-stone-400">
-                        裏向きのカードを選ぶと、そのカードが表になり、正位置・逆位置が決定して占い結果を生成します。
-                      </p>
+                      {busy ? (
+                        <ReadingLoading />
+                      ) : (
+                        <>
+                          <MessageCircle className="mb-5 h-12 w-12 text-cyan-100/50" />
+                          <h2 className="text-2xl font-semibold text-white">カードを1枚選んでください</h2>
+                          <p className="mt-3 max-w-md text-stone-400">
+                            裏向きのカードを選ぶと、そのカードが表になり、正位置・逆位置が決定して占い結果を生成します。
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -529,6 +541,49 @@ function createInitialDeck(): DeckCard[] {
     reversed: false,
     deckKey: `initial-${card.id}`,
   }));
+}
+
+function ReadingLoading() {
+  return (
+    <div className="w-full max-w-lg px-4">
+      <div className="mx-auto mb-7 grid h-20 w-20 place-items-center border border-cyan-200/35 bg-cyan-200/10 shadow-[0_0_34px_rgba(103,232,249,0.14)]">
+        <Sparkles className="h-9 w-9 animate-pulse text-cyan-100" />
+      </div>
+      <p className="text-sm uppercase tracking-[0.28em] text-cyan-100/60">Reading in progress</p>
+      <h2 className="mt-3 text-2xl font-semibold text-white">占い結果を出力中</h2>
+      <p className="mt-3 text-sm leading-7 text-stone-400">
+        宿曜、暦、選ばれたカードを重ねて、今日の流れを読み解いています。
+      </p>
+      <div className="mt-8 space-y-3 text-left">
+        <LoadingPulse label="宿曜の特性を確認中" />
+        <LoadingPulse label="今日の暦を照合中" delay="animation-delay-200" />
+        <LoadingPulse label="タロットの意味を統合中" delay="animation-delay-400" />
+      </div>
+      <div className="oracle-scan mt-8 h-1 w-full overflow-hidden bg-white/10">
+        <div className="h-full w-1/3 bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.8)]" />
+      </div>
+    </div>
+  );
+}
+
+function LoadingPulse({
+  label = "占い結果を生成中",
+  delay = "",
+  compact = false,
+}: {
+  label?: string;
+  delay?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`flex items-center gap-3 text-cyan-100/75 ${compact ? "text-xs" : "text-sm"} ${delay}`}>
+      <span className="relative flex h-2.5 w-2.5">
+        <span className="absolute inline-flex h-full w-full animate-ping bg-cyan-200 opacity-50" />
+        <span className="relative inline-flex h-2.5 w-2.5 bg-cyan-100" />
+      </span>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 function AuthPanel({

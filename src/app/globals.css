@@ -26,3 +26,29 @@ input {
   background: #a5f3fc;
   color: #050608;
 }
+
+.oracle-scan > div {
+  animation: oracle-scan 1.35s ease-in-out infinite;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+
+@keyframes oracle-scan {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0.25;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(320%);
+    opacity: 0.25;
+  }
+}
