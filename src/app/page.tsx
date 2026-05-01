@@ -27,6 +27,7 @@ type ReadingResult = {
   shuku: Shuku;
   tarot: TarotCard;
   reversed: boolean;
+  draws?: TarotDraw[];
   calendar: {
     solar_date: string;
     lunar_month?: number | null;
@@ -380,7 +381,7 @@ export default function Home() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "占い生成に失敗しました。");
-      setReading(data);
+      setReading({ ...data, draws });
     } catch (error) {
       setAuthMessage(error instanceof Error ? error.message : "占い生成に失敗しました。");
     } finally {
@@ -541,6 +542,7 @@ export default function Home() {
       shuku,
       tarot: card,
       reversed: item.tarot_reversed,
+      draws: [{ cardId: card.id, reversed: item.tarot_reversed, position: "保存時の代表カード" }],
       calendar: { solar_date: item.calendar_date },
       reading: item.result_text,
     });
@@ -960,34 +962,58 @@ export default function Home() {
 
                 {reading && (
                   <div ref={drawnCardRef} className="scroll-mt-5 border border-white/10 bg-[#0d1117] p-5">
-                    <div className="grid grid-cols-[120px_1fr] gap-4">
-                      <Image
-                        src={reading.tarot.image}
-                        alt={reading.tarot.jpName}
-                        width={240}
-                        height={400}
-                        className={reading.reversed ? "rotate-180" : ""}
-                      />
-                      <div>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-cyan-100/70">
+                        {(reading.draws?.length ?? 1) > 1 ? "Drawn cards" : "Drawn card"}
+                      </p>
+                      {(reading.draws?.length ?? 0) > 1 ? (
+                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
+                          {reading.draws?.map((draw, index) => {
+                            const card = majorArcana[draw.cardId] ?? majorArcana[0];
+                            return (
+                              <div key={`${draw.position}-${index}`} className="border border-white/10 bg-black/20 p-2">
+                                <Image
+                                  src={card.image}
+                                  alt={card.jpName}
+                                  width={180}
+                                  height={300}
+                                  className={`aspect-[3/5] w-full object-cover ${draw.reversed ? "rotate-180" : ""}`}
+                                />
+                                <p className="mt-2 text-xs text-cyan-100/60">
+                                  {index + 1}. {draw.position}
+                                </p>
+                                <p className="mt-1 truncate text-sm font-semibold text-white">{card.jpName}</p>
+                                <p className="text-xs text-stone-400">{draw.reversed ? "逆位置" : "正位置"}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="mt-4 grid grid-cols-[120px_1fr] gap-4">
+                          <Image
+                            src={reading.tarot.image}
+                            alt={reading.tarot.jpName}
+                            width={240}
+                            height={400}
+                            className={reading.reversed ? "rotate-180" : ""}
+                          />
                           <div>
-                            <p className="text-sm text-cyan-100/70">Drawn card</p>
-                            <h3 className="mt-2 text-2xl font-semibold text-white">{reading.tarot.jpName}</h3>
+                            <h3 className="text-2xl font-semibold text-white">{reading.tarot.jpName}</h3>
+                            <p className="mt-1 text-stone-400">
+                              {reading.tarot.name} / {reading.reversed ? "逆位置" : "正位置"}
+                            </p>
+                            <p className="mt-3 text-sm leading-6 text-stone-300">
+                              {reading.reversed ? reading.tarot.reversed : reading.tarot.upright}
+                            </p>
                           </div>
                         </div>
-                        <p className="mt-1 text-stone-400">
-                          {reading.tarot.name} / {reading.reversed ? "逆位置" : "正位置"}
-                        </p>
-                        <p className="mt-3 text-sm leading-6 text-stone-300">
-                          {reading.reversed ? reading.tarot.reversed : reading.tarot.upright}
-                        </p>
+                      )}
                         <div className="mt-5 border-t border-white/10 pt-4">
                           <p className="text-sm text-cyan-100/70">Shukuyo</p>
                           <p className="mt-1 text-lg text-white">
                             {reading.shuku.name}宿 <span className="text-stone-400">({reading.shuku.reading})</span>
                           </p>
                         </div>
-                      </div>
                     </div>
                   </div>
                 )}
