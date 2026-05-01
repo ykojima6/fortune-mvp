@@ -46,6 +46,11 @@ type Profile = {
   email: string;
 };
 
+type GuestProfile = {
+  name: string;
+  birth_date: string;
+};
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -75,6 +80,7 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("signin");
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
   const [authForm, setAuthForm] = useState({
     name: "",
     birthDate: "",
@@ -133,6 +139,9 @@ export default function Home() {
   const revealedCard = revealedSelection ? majorArcana[revealedSelection.cardId] : null;
   const currentCard = reading?.tarot ?? revealedCard;
   const currentReversed = reading?.reversed ?? revealedSelection?.reversed ?? false;
+  const activeName = profile?.name || guestProfile?.name || authForm.name || "あなた";
+  const activeBirthDate = profile?.birth_date || guestProfile?.birth_date || authForm.birthDate;
+  const isGuest = Boolean(guestProfile && !user);
 
   async function loadProfile(userId: string) {
     if (!supabase) return;
@@ -202,9 +211,7 @@ export default function Home() {
   }
 
   async function createReading(selection: TarotSelection) {
-    const name = profile?.name || authForm.name || "あなた";
-    const birthDate = profile?.birth_date || authForm.birthDate;
-    if (!birthDate) {
+    if (!activeBirthDate) {
       setAuthMessage("生年月日を登録してから占ってください。");
       return;
     }
@@ -216,8 +223,8 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
-          birthDate,
+          name: activeName,
+          birthDate: activeBirthDate,
           tarotCardId: selection.cardId,
           tarotReversed: selection.reversed,
         }),
@@ -246,6 +253,26 @@ export default function Home() {
     setChat([]);
     setQuestion("");
     setAuthMessage("");
+  }
+
+  function startGuestReading(name: string, birthDate: string) {
+    setGuestProfile({ name: name.trim() || "あなた", birth_date: birthDate });
+    setReading(null);
+    setChat([]);
+    setQuestion("");
+    setAuthMessage("");
+    setDeck(createShuffledDeck());
+    setSelectedDeckIndex(null);
+  }
+
+  function exitGuestReading() {
+    setGuestProfile(null);
+    setReading(null);
+    setChat([]);
+    setQuestion("");
+    setAuthMessage("");
+    setDeck(createShuffledDeck());
+    setSelectedDeckIndex(null);
   }
 
   async function getAccessToken() {
@@ -387,6 +414,7 @@ export default function Home() {
     setReading(null);
     setChat([]);
     setHistory([]);
+    setGuestProfile(null);
   }
 
   return (
@@ -404,12 +432,12 @@ export default function Home() {
                 <h1 className="text-xl font-semibold text-white">宿曜タロット・オラクル</h1>
               </div>
             </div>
-            {user && (
+            {(user || guestProfile) && (
               <button
-                onClick={signOut}
+                onClick={user ? signOut : exitGuestReading}
                 className="border border-white/15 px-3 py-2 text-sm text-stone-300 transition hover:border-white/40 hover:text-white"
               >
-                Logout
+                {user ? "Logout" : "体験を終了"}
               </button>
             )}
           </div>
@@ -443,13 +471,14 @@ export default function Home() {
             </div>
           )}
 
-          {!user ? (
+          {!user && !guestProfile ? (
             <AuthPanel
               mode={mode}
               setMode={setMode}
               form={authForm}
               setForm={setAuthForm}
               onSubmit={submitAuth}
+              onStartGuest={startGuestReading}
               busy={busy}
               message={authMessage}
             />
@@ -458,8 +487,13 @@ export default function Home() {
               <div className="space-y-5">
                 <div className="border border-white/10 bg-white/[0.04] p-5">
                   <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Profile</p>
-                  <h2 className="mt-3 text-2xl font-semibold text-white">{profile?.name ?? user.email}</h2>
-                  <p className="mt-2 text-stone-400">{profile?.birth_date ?? "生年月日未登録"}</p>
+                  <h2 className="mt-3 text-2xl font-semibold text-white">
+                    {activeName || user?.email || "体験ユーザー"}
+                  </h2>
+                  <p className="mt-2 text-stone-400">
+                    {activeBirthDate ?? "生年月日未登録"}
+                    {isGuest && <span className="ml-2 text-cyan-100/60">体験モード</span>}
+                  </p>
                   <div className="mt-5 border border-white/10 bg-black/20 p-3">
                     <div className="grid grid-cols-[74px_1fr] gap-3">
                       {currentCard ? (
@@ -508,70 +542,78 @@ export default function Home() {
                   {authMessage && <p className="mt-4 text-sm text-amber-100">{authMessage}</p>}
                 </div>
 
-                <div className="border border-white/10 bg-white/[0.04] p-5">
-                  <div className="mb-4 flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">History</p>
-                      <h3 className="mt-2 text-xl font-semibold text-white">最近の占い履歴</h3>
+                {user ? (
+                  <div className="border border-white/10 bg-white/[0.04] p-5">
+                    <div className="mb-4 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">History</p>
+                        <h3 className="mt-2 text-xl font-semibold text-white">最近の占い履歴</h3>
+                      </div>
+                      <p className="text-sm text-stone-400">{historyBusy ? "読込中..." : `${history.length}件`}</p>
                     </div>
-                    <p className="text-sm text-stone-400">{historyBusy ? "読込中..." : `${history.length}件`}</p>
+                    {history.length > 0 ? (
+                      <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                        {history.map((item) => {
+                          const card = majorArcana[item.tarot_card_id] ?? majorArcana[0];
+                          const active = reading?.id === item.id;
+                          return (
+                            <div
+                              key={item.id}
+                              className={`grid grid-cols-[1fr_auto] gap-2 border p-2 transition ${
+                                active
+                                  ? "border-cyan-200/70 bg-cyan-200/10"
+                                  : "border-white/10 bg-black/20 hover:border-white/35"
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => openHistory(item)}
+                                className="grid min-w-0 grid-cols-[44px_1fr] gap-3 text-left"
+                              >
+                                <Image
+                                  src={card.image}
+                                  alt={card.jpName}
+                                  width={88}
+                                  height={147}
+                                  className={`aspect-[3/5] w-full object-cover ${
+                                    item.tarot_reversed ? "rotate-180" : ""
+                                  }`}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-semibold text-white">
+                                    {formatHistoryDate(item.created_at)}
+                                  </span>
+                                  <span className="mt-1 block truncate text-xs text-stone-400">
+                                    {item.shuku_name}宿 / {card.jpName} / {item.tarot_reversed ? "逆位置" : "正位置"}
+                                  </span>
+                                  <span className="mt-1 block text-xs text-cyan-100/60">{item.calendar_date}</span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteReading(item.id)}
+                                disabled={deleteBusyId === item.id}
+                                className="grid h-10 w-10 place-items-center border border-white/10 text-stone-400 transition hover:border-red-100/60 hover:text-red-100 disabled:cursor-wait disabled:opacity-50"
+                                aria-label="履歴を削除"
+                                title="履歴を削除"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="border border-white/10 bg-black/20 p-4 text-sm leading-6 text-stone-400">
+                        まだ履歴はありません。占い結果を保存すると、このアカウントの履歴に表示されます。
+                      </p>
+                    )}
                   </div>
-                  {history.length > 0 ? (
-                    <div className="max-h-72 space-y-2 overflow-auto pr-1">
-                      {history.map((item) => {
-                        const card = majorArcana[item.tarot_card_id] ?? majorArcana[0];
-                        const active = reading?.id === item.id;
-                        return (
-                          <div
-                            key={item.id}
-                            className={`grid grid-cols-[1fr_auto] gap-2 border p-2 transition ${
-                              active
-                                ? "border-cyan-200/70 bg-cyan-200/10"
-                                : "border-white/10 bg-black/20 hover:border-white/35"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => openHistory(item)}
-                              className="grid min-w-0 grid-cols-[44px_1fr] gap-3 text-left"
-                            >
-                              <Image
-                                src={card.image}
-                                alt={card.jpName}
-                                width={88}
-                                height={147}
-                                className={`aspect-[3/5] w-full object-cover ${item.tarot_reversed ? "rotate-180" : ""}`}
-                              />
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-semibold text-white">
-                                  {formatHistoryDate(item.created_at)}
-                                </span>
-                                <span className="mt-1 block truncate text-xs text-stone-400">
-                                  {item.shuku_name}宿 / {card.jpName} / {item.tarot_reversed ? "逆位置" : "正位置"}
-                                </span>
-                                <span className="mt-1 block text-xs text-cyan-100/60">{item.calendar_date}</span>
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteReading(item.id)}
-                              disabled={deleteBusyId === item.id}
-                              className="grid h-10 w-10 place-items-center border border-white/10 text-stone-400 transition hover:border-red-100/60 hover:text-red-100 disabled:cursor-wait disabled:opacity-50"
-                              aria-label="履歴を削除"
-                              title="履歴を削除"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="border border-white/10 bg-black/20 p-4 text-sm leading-6 text-stone-400">
-                      まだ履歴はありません。占い結果を保存すると、このアカウントの履歴に表示されます。
-                    </p>
-                  )}
-                </div>
+                ) : (
+                  <div className="border border-cyan-200/20 bg-cyan-200/[0.05] p-5 text-sm leading-7 text-cyan-50/80">
+                    体験モードでは占い履歴やチャット内容は保存されません。保存したい場合は新規登録またはログインしてください。
+                  </div>
+                )}
 
                 <div className="border border-white/10 bg-white/[0.04] p-5">
                   <div className="mb-4 flex items-end justify-between gap-3">
@@ -658,6 +700,7 @@ export default function Home() {
                             <p className="text-sm text-cyan-100/70">Drawn card</p>
                             <h3 className="mt-2 text-2xl font-semibold text-white">{reading.tarot.jpName}</h3>
                           </div>
+                          {user && (
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -680,6 +723,7 @@ export default function Home() {
                               </button>
                             )}
                           </div>
+                          )}
                         </div>
                         <p className="mt-1 text-stone-400">
                           {reading.tarot.name} / {reading.reversed ? "逆位置" : "正位置"}
@@ -843,6 +887,7 @@ function AuthPanel({
   form,
   setForm,
   onSubmit,
+  onStartGuest,
   busy,
   message,
 }: {
@@ -851,9 +896,17 @@ function AuthPanel({
   form: { name: string; birthDate: string; email: string; password: string };
   setForm: (form: { name: string; birthDate: string; email: string; password: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onStartGuest: (name: string, birthDate: string) => void;
   busy: boolean;
   message: string;
 }) {
+  const [guestForm, setGuestForm] = useState({ name: "", birthDate: "" });
+
+  function submitGuest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onStartGuest(guestForm.name, guestForm.birthDate);
+  }
+
   return (
     <section className="mx-auto flex w-full max-w-xl flex-1 items-center">
       <div className="w-full border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/30 md:p-7">
@@ -921,6 +974,36 @@ function AuthPanel({
             {busy ? "処理中..." : mode === "signup" ? "アカウントを作成" : "ログイン"}
           </button>
           {message && <p className="text-sm text-amber-100">{message}</p>}
+        </form>
+
+        <div className="my-7 border-t border-white/10" />
+
+        <form onSubmit={submitGuest} className="space-y-4">
+          <div>
+            <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Trial reading</p>
+            <h2 className="mt-2 text-xl font-semibold text-white">ログインせずに体験する</h2>
+            <p className="mt-2 text-sm leading-6 text-stone-400">
+              生年月日だけで占えます。体験モードでは履歴やチャット内容は保存されません。
+            </p>
+          </div>
+          <Field
+            icon={<User className="h-5 w-5" />}
+            label="名前（任意）"
+            autoComplete="name"
+            value={guestForm.name}
+            onChange={(value) => setGuestForm({ ...guestForm, name: value })}
+          />
+          <Field
+            icon={<CalendarDays className="h-5 w-5" />}
+            label="生年月日"
+            type="date"
+            value={guestForm.birthDate}
+            onChange={(value) => setGuestForm({ ...guestForm, birthDate: value })}
+            required
+          />
+          <button className="w-full border border-cyan-200/40 px-5 py-4 font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10">
+            体験をはじめる
+          </button>
         </form>
       </div>
     </section>
