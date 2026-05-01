@@ -16,7 +16,7 @@ import {
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { majorArcana, tarotBackImage, type TarotCard } from "@/lib/tarot";
-import type { Shuku } from "@/lib/shukuyo";
+import { shukuList, type Shuku } from "@/lib/shukuyo";
 
 type Mode = "signin" | "signup";
 
@@ -58,6 +58,17 @@ type DeckCard = TarotSelection & {
   deckKey: string;
 };
 
+type ReadingHistoryItem = {
+  id: string;
+  shuku_name: string;
+  shuku_index: number;
+  tarot_card_id: number;
+  tarot_reversed: boolean;
+  calendar_date: string;
+  result_text: string;
+  created_at: string;
+};
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("signin");
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -76,20 +87,31 @@ export default function Home() {
   const [chatBusy, setChatBusy] = useState(false);
   const [deck, setDeck] = useState<DeckCard[]>(() => createInitialDeck());
   const [selectedDeckIndex, setSelectedDeckIndex] = useState<number | null>(null);
+  const [history, setHistory] = useState<ReadingHistoryItem[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
-      if (data.user) void loadProfile(data.user.id);
+      if (data.user) {
+        void loadProfile(data.user.id);
+        void loadHistory(data.user.id);
+      }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) void loadProfile(session.user.id);
-      if (!session?.user) setProfile(null);
+      if (session?.user) {
+        void loadProfile(session.user.id);
+        void loadHistory(session.user.id);
+      }
+      if (!session?.user) {
+        setProfile(null);
+        setHistory([]);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -105,6 +127,8 @@ export default function Home() {
   const featuredCards = useMemo(() => majorArcana.slice(0, 6), []);
   const revealedSelection = selectedDeckIndex === null ? null : deck[selectedDeckIndex];
   const revealedCard = revealedSelection ? majorArcana[revealedSelection.cardId] : null;
+  const currentCard = reading?.tarot ?? revealedCard;
+  const currentReversed = reading?.reversed ?? revealedSelection?.reversed ?? false;
 
   async function loadProfile(userId: string) {
     if (!supabase) return;
@@ -114,6 +138,19 @@ export default function Home() {
       .eq("id", userId)
       .maybeSingle();
     setProfile(data);
+  }
+
+  async function loadHistory(userId: string) {
+    if (!supabase) return;
+    setHistoryBusy(true);
+    const { data } = await supabase
+      .from("readings")
+      .select("id,shuku_name,shuku_index,tarot_card_id,tarot_reversed,calendar_date,result_text,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(12);
+    setHistory((data as ReadingHistoryItem[] | null) ?? []);
+    setHistoryBusy(false);
   }
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
@@ -185,6 +222,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "占い生成に失敗しました。");
       setReading(data);
+      if (user?.id) void loadHistory(user.id);
     } catch (error) {
       setAuthMessage(error instanceof Error ? error.message : "占い生成に失敗しました。");
     } finally {
@@ -203,6 +241,26 @@ export default function Home() {
     setDeck(createShuffledDeck());
     setSelectedDeckIndex(null);
     setReading(null);
+    setChat([]);
+    setQuestion("");
+    setAuthMessage("");
+  }
+
+  function openHistory(item: ReadingHistoryItem) {
+    const card = majorArcana[item.tarot_card_id] ?? majorArcana[0];
+    const shuku =
+      shukuList.find((candidate) => candidate.index === item.shuku_index) ??
+      shukuList.find((candidate) => candidate.name === item.shuku_name) ??
+      shukuList[0];
+    setReading({
+      id: item.id,
+      shuku,
+      tarot: card,
+      reversed: item.tarot_reversed,
+      calendar: { solar_date: item.calendar_date },
+      reading: item.result_text,
+    });
+    setSelectedDeckIndex(null);
     setChat([]);
     setQuestion("");
     setAuthMessage("");
@@ -236,6 +294,7 @@ export default function Home() {
     await supabase.auth.signOut();
     setReading(null);
     setChat([]);
+    setHistory([]);
   }
 
   return (
@@ -311,13 +370,13 @@ export default function Home() {
                   <p className="mt-2 text-stone-400">{profile?.birth_date ?? "生年月日未登録"}</p>
                   <div className="mt-5 border border-white/10 bg-black/20 p-3">
                     <div className="grid grid-cols-[74px_1fr] gap-3">
-                      {revealedCard ? (
+                      {currentCard ? (
                         <Image
-                          src={revealedCard.image}
-                          alt={revealedCard.jpName}
+                          src={currentCard.image}
+                          alt={currentCard.jpName}
                           width={148}
                           height={247}
-                          className={revealedSelection?.reversed ? "rotate-180" : ""}
+                          className={currentReversed ? "rotate-180" : ""}
                         />
                       ) : (
                         <Image
@@ -331,11 +390,11 @@ export default function Home() {
                       <div className="min-w-0">
                         <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/60">Current draw</p>
                         <p className="mt-2 text-lg font-semibold text-white">
-                          {revealedCard ? revealedCard.jpName : "未選択"}
+                          {currentCard ? currentCard.jpName : "未選択"}
                         </p>
                         <p className="text-sm text-stone-400">
-                          {revealedCard
-                            ? `${revealedCard.name} / ${revealedSelection?.reversed ? "逆位置" : "正位置"}`
+                          {currentCard
+                            ? `${currentCard.name} / ${currentReversed ? "逆位置" : "正位置"}`
                             : "裏向きの22枚から1枚選んでください"}
                         </p>
                         {busy && selectedDeckIndex !== null && (
@@ -355,6 +414,57 @@ export default function Home() {
                     {selectedDeckIndex === null ? "シャッフルし直す" : "もう一度シャッフルして引き直す"}
                   </button>
                   {authMessage && <p className="mt-4 text-sm text-amber-100">{authMessage}</p>}
+                </div>
+
+                <div className="border border-white/10 bg-white/[0.04] p-5">
+                  <div className="mb-4 flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">History</p>
+                      <h3 className="mt-2 text-xl font-semibold text-white">最近の占い履歴</h3>
+                    </div>
+                    <p className="text-sm text-stone-400">{historyBusy ? "読込中..." : `${history.length}件`}</p>
+                  </div>
+                  {history.length > 0 ? (
+                    <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                      {history.map((item) => {
+                        const card = majorArcana[item.tarot_card_id] ?? majorArcana[0];
+                        const active = reading?.id === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => openHistory(item)}
+                            className={`grid w-full grid-cols-[44px_1fr] gap-3 border p-2 text-left transition ${
+                              active
+                                ? "border-cyan-200/70 bg-cyan-200/10"
+                                : "border-white/10 bg-black/20 hover:border-white/35"
+                            }`}
+                          >
+                            <Image
+                              src={card.image}
+                              alt={card.jpName}
+                              width={88}
+                              height={147}
+                              className={`aspect-[3/5] w-full object-cover ${item.tarot_reversed ? "rotate-180" : ""}`}
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-white">
+                                {formatHistoryDate(item.created_at)}
+                              </span>
+                              <span className="mt-1 block truncate text-xs text-stone-400">
+                                {item.shuku_name}宿 / {card.jpName} / {item.tarot_reversed ? "逆位置" : "正位置"}
+                              </span>
+                              <span className="mt-1 block text-xs text-cyan-100/60">{item.calendar_date}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="border border-white/10 bg-black/20 p-4 text-sm leading-6 text-stone-400">
+                      まだ履歴はありません。カードを選んで占うと、このアカウントに結果が保存されます。
+                    </p>
+                  )}
                 </div>
 
                 <div className="border border-white/10 bg-white/[0.04] p-5">
@@ -541,6 +651,15 @@ function createInitialDeck(): DeckCard[] {
     reversed: false,
     deckKey: `initial-${card.id}`,
   }));
+}
+
+function formatHistoryDate(value: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function ReadingLoading() {
