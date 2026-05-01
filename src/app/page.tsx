@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import {
@@ -181,6 +181,7 @@ export default function Home() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const drawnCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -357,6 +358,9 @@ export default function Home() {
     setChat([]);
     setQuestion("");
     setAuthMessage("");
+    window.setTimeout(() => {
+      drawnCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   function changeSpread(spreadId: SpreadId) {
@@ -860,7 +864,7 @@ export default function Home() {
                 </div>
 
                 {reading && (
-                  <div className="border border-white/10 bg-[#0d1117] p-5">
+                  <div ref={drawnCardRef} className="scroll-mt-5 border border-white/10 bg-[#0d1117] p-5">
                     <div className="grid grid-cols-[120px_1fr] gap-4">
                       <Image
                         src={reading.tarot.image}
