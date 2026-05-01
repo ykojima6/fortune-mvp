@@ -53,7 +53,17 @@ npm run generate:tarot
 GPT Image APIでPNGを生成して上書きする場合:
 
 ```bash
-OPENAI_API_KEY=... OPENAI_IMAGE_MODEL=gpt-image-1.5 npm run generate:tarot:gpt
+OPENAI_API_KEY=... OPENAI_IMAGE_MODEL=gpt-image-2 npm run generate:tarot:gpt:all
+```
+
+5枚ずつ分割生成する場合:
+
+```bash
+OPENAI_API_KEY=... TAROT_IMAGE_BATCH=1 npm run generate:tarot:gpt
+OPENAI_API_KEY=... TAROT_IMAGE_BATCH=2 npm run generate:tarot:gpt
+OPENAI_API_KEY=... TAROT_IMAGE_BATCH=3 npm run generate:tarot:gpt
+OPENAI_API_KEY=... TAROT_IMAGE_BATCH=4 npm run generate:tarot:gpt
+OPENAI_API_KEY=... TAROT_IMAGE_BATCH=5 npm run generate:tarot:gpt
 ```
 
 ## 検証

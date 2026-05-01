@@ -8,7 +8,7 @@ export type TarotCard = {
   image: string;
 };
 
-export const tarotBackImage = "/tarot/anime/card-back.svg";
+export const tarotBackImage = "/tarot/anime/card-back.png";
 
 export const majorArcana: TarotCard[] = [
   ["fool", "The Fool", "愚者", "新しいことを始める。自由に動く。", "あわてて動きすぎる。準備を忘れる。"],
@@ -40,7 +40,7 @@ export const majorArcana: TarotCard[] = [
   jpName,
   upright,
   reversed,
-  image: `/tarot/anime/${String(id).padStart(2, "0")}-${slug}.svg`,
+  image: `/tarot/anime/${String(id).padStart(2, "0")}-${slug}.png`,
 }));
 
 export function drawTarot(seedText: string) {

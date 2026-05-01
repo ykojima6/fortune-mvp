@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "generate:tarot": "node scripts/generate-anime-tarot.mjs",
-    "generate:tarot:gpt": "node scripts/generate-tarot-gpt-images.mjs"
+    "generate:tarot:gpt": "node scripts/generate-tarot-gpt-images.mjs",
+    "generate:tarot:gpt:all": "for i in 1 2 3 4 5; do TAROT_IMAGE_BATCH=$i node scripts/generate-tarot-gpt-images.mjs; done"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

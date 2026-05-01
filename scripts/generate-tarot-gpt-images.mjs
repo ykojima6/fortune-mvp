@@ -1,8 +1,11 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 
 const apiKey = process.env.OPENAI_API_KEY;
-const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
+const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 const outDir = "public/tarot/anime";
+const batchSize = Number(process.env.TAROT_IMAGE_BATCH_SIZE || 5);
+const batch = Number(process.env.TAROT_IMAGE_BATCH || 1);
+const force = process.env.TAROT_IMAGE_FORCE === "1";
 
 const cards = [
   ["card-back", "Tarot card back", "Symmetrical card back, cyan and violet astral geometry, no readable text"],
@@ -36,11 +39,28 @@ if (!apiKey) {
 
 mkdirSync(outDir, { recursive: true });
 
-for (const [file, title, concept] of cards) {
+const start = (batch - 1) * batchSize;
+const selectedCards = cards.slice(start, start + batchSize);
+
+if (selectedCards.length === 0) {
+  throw new Error(`No cards for TAROT_IMAGE_BATCH=${batch} with TAROT_IMAGE_BATCH_SIZE=${batchSize}.`);
+}
+
+console.log(`Generating batch ${batch}: ${selectedCards.map(([file]) => file).join(", ")} using ${model}`);
+
+for (const [file, title, concept] of selectedCards) {
+  const outputPath = `${outDir}/${file}.png`;
+  if (!force && existsSync(outputPath)) {
+    console.log(`Skipped ${outputPath} because it already exists. Set TAROT_IMAGE_FORCE=1 to overwrite.`);
+    continue;
+  }
+
   const prompt = [
-    "Original tarot card illustration, cool high-end anime style, vertical 3:5 tarot card frame.",
-    "Sharp line art, cinematic lighting, dark obsidian background, cyan/violet/gold accents, premium collectible card art.",
-    "No copyrighted characters, no logos, no watermark, no readable text except abstract decorative marks.",
+    "Original tarot card illustration, dynamic high-end anime style, vertical 3:5 tarot card frame.",
+    "Dramatic motion, sharp line art, cinematic lighting, premium collectible card art.",
+    "Dark obsidian background with cyan, violet, gold, and crimson accents.",
+    "Full-card composition, strong silhouette, mystical energy, detailed costume, beautiful face and hands where applicable.",
+    "No copyrighted characters, no logos, no watermark, no readable text, no typography except abstract decorative marks.",
     `Card concept: ${title}. ${concept}.`,
   ].join(" ");
 
@@ -67,6 +87,8 @@ for (const [file, title, concept] of cards) {
   const b64 = data.data?.[0]?.b64_json;
   if (!b64) throw new Error(`No image data returned for ${file}`);
 
-  writeFileSync(`${outDir}/${file}.png`, Buffer.from(b64, "base64"));
-  console.log(`Wrote ${outDir}/${file}.png`);
+  writeFileSync(outputPath, Buffer.from(b64, "base64"));
+  console.log(`Wrote ${outputPath}`);
 }
+
+console.log("Batch complete.");
