@@ -358,9 +358,6 @@ export default function Home() {
     setChat([]);
     setQuestion("");
     setAuthMessage("");
-    window.setTimeout(() => {
-      drawnCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
   }
 
   function changeSpread(spreadId: SpreadId) {
@@ -501,6 +498,14 @@ export default function Home() {
     setChat([]);
     setQuestion("");
     setAuthMessage("");
+    scrollToDrawnCardOnMobile();
+  }
+
+  function scrollToDrawnCardOnMobile() {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    window.setTimeout(() => {
+      drawnCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   async function submitQuestion(event: FormEvent<HTMLFormElement>) {
