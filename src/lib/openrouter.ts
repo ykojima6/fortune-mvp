@@ -32,6 +32,15 @@ type ReadingInput = {
   } | null;
 };
 
+type SpreadReadingSpec = {
+  title: string;
+  purpose: string;
+  positionRule: string;
+  synthesisRule: string;
+  structure: string;
+  avoid: string;
+};
+
 const defaultModel = process.env.OPENROUTER_MODEL || "openrouter/free";
 const openRouterTimeoutMs = 30000;
 
@@ -53,11 +62,8 @@ export async function generateReading(input: ReadingInput) {
         }、意味: ${draw.reversed ? draw.tarot.reversed : draw.tarot.upright}`,
     )
     .join("\n");
-  const spreadInstruction =
-    draws.length === 1
-      ? "タロット1枚引きとして、そのカードが今日の選択にどう関係するかをやさしく説明する。"
-      : `${spreadName}として、各ポジションの役割を明示しながら全体の流れを読む。カードごとの説明は小学5年生でもわかる短い言葉にし、最後に全体をまとめる。`;
   const isOneOracle = !input.partner && draws.length === 1 && spreadName === "ワンオラクル";
+  const spreadSpec = getSpreadReadingSpec(spreadName, Boolean(input.partner));
   const partnerBlock = input.partner
     ? `\n相手: ${input.partner.name}\n相手の生年月日: ${input.partner.birthDate}\n相手の宿曜: ${input.partner.shuku.name}宿（${input.partner.shuku.reading}）、テーマ: ${input.partner.shuku.theme}、強み: ${input.partner.shuku.strength}、注意: ${input.partner.shuku.caution}\n相手の暦: ${
         input.partner.calendar
@@ -75,30 +81,8 @@ export async function generateReading(input: ReadingInput) {
     ? "あなたと相手の宿曜の違い、近づきやすい点、すれ違いやすい点、関係をよくする具体策を多めに書く。"
     : isOneOracle
       ? "前半は「この人自身の性格・思考癖・対人傾向・仕事の進め方」を多めに書く。ユーザーが当たっているか判断しやすい描写にする。"
-      : "選んだスプレッドの目的に沿って、各ポジションの意味と全体の流れを中心に読む。今日の運勢としては書かない。";
-  const structure = input.partner
-    ? `1. 相性リーディングの全体像
-2. あなたの宿曜と相手の宿曜
-3. 近づきやすいところ
-4. すれ違いやすいところ
-5. タロットスプレッドで見る関係の流れ
-6. 関係をよくする具体的な行動
-最後に一言のキーフレーズ。`
-    : isOneOracle
-      ? `1. 今日の占い
-2. 宿曜だけで見るあなたの基本特性
-3. 今日の心の動きと運勢
-4. 仕事・創作・お金まわり
-5. 恋愛・人間関係
-6. タロットが示す今日の選択
-7. 今日の開運アクション
-最後に一言のキーフレーズ。`
-      : `1. ${spreadName}の全体像
-2. 宿曜だけで見るあなたの基本特性
-3. スプレッド各ポジションの読み
-4. 今見えている課題と流れ
-5. 具体的な行動のヒント
-最後に一言のキーフレーズ。`;
+      : `${spreadName}の固有の目的、ポジション同士の関係、結論の出し方を中心に読む。今日の運勢としては書かない。`;
+  const structure = spreadSpec.structure;
 
   try {
     const response = await fetchOpenRouter(
@@ -131,8 +115,15 @@ ${tarotLines}
 - 生年月日からわかる宿曜と、暦、引いたカードの順に根拠を自然に説明する。
 - タロットに関する説明は、小学5年生でもわかる言葉にする。むずかしい熟語や専門用語は避け、短い文で「つまり今日どうすればいいか」を書く。
 - タロットの章は、特にやさしい言葉で書く。1文は長くしすぎない。
-- ${spreadInstruction}
+- スプレッド名だけを置き換えた汎用文にしない。必ず次の「スプレッド専用ルール」に従う。
+- カードの意味を順番に並べるだけで終わらせない。最低2回は、別々のポジション同士を比較して流れを説明する。
 - 医療、法律、投資、ギャンブルの保証や断定は避ける。
+
+スプレッド専用ルール:
+- 目的: ${spreadSpec.purpose}
+- ポジションの読み方: ${spreadSpec.positionRule}
+- 総合判断の出し方: ${spreadSpec.synthesisRule}
+- 避ける書き方: ${spreadSpec.avoid}
 
 構成:
 ${structure}`,
@@ -236,6 +227,7 @@ export function generateLocalReading(input: ReadingInput) {
     ? `${formatLunarDate(input.calendar)}、${input.calendar.moon_phase ?? "月相未登録"}、${input.calendar.rokuyo ?? "六曜未登録"}の気配`
     : "暦DB未登録日のため、太陽暦からの推定";
   const isOneOracle = !input.partner && draws.length === 1 && spreadName === "ワンオラクル";
+  const spreadSpec = getSpreadReadingSpec(spreadName, Boolean(input.partner));
   const partnerLine = input.partner
     ? `\n相性の相手は${input.partner.name}さんです。生年月日から見る相手の宿曜は${input.partner.shuku.name}宿で、テーマは「${input.partner.shuku.theme}」です。あなたの${input.shuku.name}宿は${input.shuku.strength}ところが強みで、相手の${input.partner.shuku.name}宿は${input.partner.shuku.strength}ところに良さがあります。二人の相性では、同じ速さで進もうとするより、得意な役割を分けるほど関係が安定します。あなたが細部を整え、相手が別の角度から流れを作るようにすると、お互いの良さがぶつからずに出やすくなります。一方で、疲れている時は、相手の何気ない言葉を重く受け取りやすいので、すぐに結論を出さず「今の意味をもう少し教えて」と確認するのがよいでしょう。`
     : "";
@@ -250,7 +242,8 @@ ${input.shuku.name}宿の人は、表面的には落ち着いて見えても、�
 スプレッド各ポジションの読み
 ${spreadSummary}
 
-この並びを見ると、中心になるのは${input.tarot.jpName}（${position}）です。「${tarotMeaning}」という意味があり、今の状況では、急に大きな答えを出すより、まず一つの態度を決めることが大切だと読めます。複数枚のカードは、問題が一方向だけではなく、気持ち、環境、相手、未来の可能性が重なって動いていることを示しています。うまく進めるコツは、全部を一度に変えようとしないことです。
+このスプレッドの目的
+${spreadSpec.purpose} ${spreadSpec.positionRule} そのため、中心になる${input.tarot.jpName}（${position}）だけで結論を出さず、隣り合う位置や対になる位置を比べて読みます。「${tarotMeaning}」という意味は、今の状況では、急に大きな答えを出すより、まず一つの態度を決めることが大切だと示しています。${spreadSpec.synthesisRule}
 
 今見えている課題と流れ
 このリーディングでは、気持ちの中にある本音を無視しないことが大切です。人に合わせて進めるほど一時的には楽になりますが、あとで小さな不満が残りやすくなります。逆に、自分の希望だけを押し出すと、相手や周囲との呼吸が合いにくくなります。今は、言葉を短く、具体的にするほど流れが整います。
@@ -290,6 +283,158 @@ ${spreadSummary}
 今日やるとよいことは三つです。まず、気になっている未完了の連絡を一つだけ終わらせること。次に、作業環境やスマホ内の不要なものを五分だけ整理すること。最後に、自分の本音を一文でメモすることです。「本当はこうしたい」「これは無理しすぎている」「ここは譲りたくない」と短く書くだけで、今日の判断がぶれにくくなります。運を上げる色は青みのある白、または深いネイビー。持ち物は、メモ帳、細いペン、透明感のある小物が合います。
 
 キーフレーズ: 自分の違和感を、静かな判断力に変える。`;
+}
+
+function getSpreadReadingSpec(spreadName: string, hasPartner: boolean): SpreadReadingSpec {
+  const compatibilityPrefix = hasPartner
+    ? "相性では、あなた側と相手側の宿曜差、カードの位置、会話のすれ違いを重ねて読む。"
+    : "";
+
+  if (spreadName === "ツーオラクル") {
+    return {
+      title: "ツーオラクル",
+      purpose: `${compatibilityPrefix}2枚を「現状」と「対策」の対比として読み、今起きていることと次に取るべき態度を分けて出す。`,
+      positionRule:
+        "1枚目は今の状態、2枚目は動かし方として扱う。2枚のカードが同じ方向なら後押し、反対方向なら迷いの原因として説明する。",
+      synthesisRule:
+        "結論では、現状カードから対策カードへ移るための小さな一歩を一つに絞る。A/B比較の相談に見える場合は、2枚を選択肢の違いとしても補足する。",
+      structure: `1. ツーオラクルの結論
+2. 宿曜だけで見るあなたの基本特性
+3. 現状カードが示す今の状態
+4. 対策カードが示す動かし方
+5. 2枚を比べた具体的な行動
+最後に一言のキーフレーズ。`,
+      avoid: "2枚を別々の一枚引きのように説明して終わらせない。",
+    };
+  }
+
+  if (spreadName === "スリーカード") {
+    return {
+      title: "スリーカード",
+      purpose: `${compatibilityPrefix}過去、現在、未来を一本の流れとして読み、何が原因で今になり、次にどこへ向かうかを見る。`,
+      positionRule:
+        "過去は背景、現在は今の課題、未来はこのまま進んだ時の着地点として扱う。必ず過去から現在、現在から未来への変化を説明する。",
+      synthesisRule:
+        "結論では、過去の癖をどう手放し、現在の行動をどう変えると未来カードが良く働くかを書く。",
+      structure: `1. スリーカードで見える流れ
+2. 宿曜だけで見るあなたの基本特性
+3. 過去から現在へ起きた変化
+4. 現在から未来へ向かう道筋
+5. 今からできる具体的な調整
+最後に一言のキーフレーズ。`,
+      avoid: "過去・現在・未来を単発の運勢として並べない。",
+    };
+  }
+
+  if (spreadName === "ギリシャ十字") {
+    return {
+      title: "ギリシャ十字",
+      purpose: `${compatibilityPrefix}現状、障害、対策、結果、最終的な答えを十字型に整理し、問題解決の方向を出す。`,
+      positionRule:
+        "現状と障害で問題の形を決め、対策が結果にどうつながるかを読む。最後のカードは全体を統合した答えとして扱う。",
+      synthesisRule:
+        "結論では、障害を避ける方法ではなく、対策カードを使って結果カードへ進む道を具体化する。",
+      structure: `1. ギリシャ十字の最終答え
+2. 宿曜だけで見るあなたの基本特性
+3. 現状と障害の読み
+4. 対策から結果への流れ
+5. 最終的な答えと実行ポイント
+最後に一言のキーフレーズ。`,
+      avoid: "5枚目をただの追加カードとして扱わない。必ず1〜4枚目をまとめる答えにする。",
+    };
+  }
+
+  if (spreadName === "ヘキサグラム") {
+    return {
+      title: "ヘキサグラム",
+      purpose: `${compatibilityPrefix}過去から未来への流れ、自分、相手や周囲、障害、最終結果を六芒星のように立体的に読む。`,
+      positionRule:
+        "過去・現在・近い未来で時間の流れを作り、自分の気持ちと相手や周囲を対比する。障害は二者の間にあるズレとして読む。",
+      synthesisRule:
+        "結論では、自分側の望みと相手や周囲の状態を比べ、最終結果へ近づくための関わり方を出す。",
+      structure: `1. ヘキサグラムで見える全体像
+2. 宿曜だけで見るあなたの基本特性
+3. 過去・現在・近い未来の流れ
+4. 自分と相手や周囲のズレ
+5. 障害と最終結果から見る関わり方
+最後に一言のキーフレーズ。`,
+      avoid: "恋愛や人間関係の相談なのに、自分側だけの話で終わらせない。",
+    };
+  }
+
+  if (spreadName === "ケルト十字") {
+    return {
+      title: "ケルト十字",
+      purpose: `${compatibilityPrefix}問題の核心、妨げ、意識と無意識、過去と近未来、自分、周囲、願望と不安、最終結果を多角的に読む。`,
+      positionRule:
+        "1枚目と2枚目を中心テーマと葛藤として最優先で読む。3枚目と4枚目は頭で考えていることと心の底の差、5枚目と6枚目は過去から近未来への流れ、7〜10枚目は自分と外側の影響から結論への道として扱う。",
+      synthesisRule:
+        "最終結果は10枚目だけで断定しない。中心十字、時間軸、周囲の影響を合わせて、なぜその結果に向かうのかを説明する。",
+      structure: `1. ケルト十字の核心
+2. 宿曜だけで見るあなたの基本特性
+3. 中心テーマと葛藤
+4. 意識・無意識・過去・近未来
+5. 自分、周囲、願望と不安、最終結果
+6. 全体から見た具体的な行動
+最後に一言のキーフレーズ。`,
+      avoid: "10枚を長い箇条書きにしない。中心十字、時間軸、外部要因に分けて統合する。",
+    };
+  }
+
+  if (spreadName === "二者択一") {
+    return {
+      title: "二者択一",
+      purpose: `${compatibilityPrefix}AとBの2つの道を比べ、どちらが絶対に正しいかではなく、それぞれの得失と選ぶ基準を見る。`,
+      positionRule:
+        "現状カードで迷いの原因を押さえ、Aを選んだ場合とAの未来、Bを選んだ場合とBの未来をペアで読む。",
+      synthesisRule:
+        "結論では、AとBの良い点、注意点、向いている人の状態を比べる。最後に選ぶための判断軸を一つ提示する。",
+      structure: `1. 二者択一の結論
+2. 宿曜だけで見るあなたの基本特性
+3. 現状と迷いの原因
+4. Aを選んだ場合の流れ
+5. Bを選んだ場合の流れ
+6. 選ぶための判断軸
+最後に一言のキーフレーズ。`,
+      avoid: "AかBかを雑に断定しない。両方の未来を公平に比べる。",
+    };
+  }
+
+  if (spreadName === "ホロスコープ") {
+    return {
+      title: "ホロスコープ",
+      purpose: `${compatibilityPrefix}全体運と12ハウスを使い、自分、お金、学び、家庭、恋愛、健康、対人、深い縁、成長、仕事、仲間、心の奥を広く読む。`,
+      positionRule:
+        "13枚を孤立させず、全体運を基準にして、自己・生活・関係・社会・内面の5領域へまとめる。",
+      synthesisRule:
+        "結論では、1年または大きな周期のテーマとして、どの領域を先に整えると他の領域も良くなるかを示す。",
+      structure: `1. ホロスコープ全体のテーマ
+2. 宿曜だけで見るあなたの基本特性
+3. 自分・お金・学び・家庭の流れ
+4. 恋愛・健康・対人・深い縁の流れ
+5. 成長・仕事・仲間・心の奥の流れ
+6. 全体運から見た優先順位
+最後に一言のキーフレーズ。`,
+      avoid: "13枚すべてを同じ重さで細切れに説明しない。領域ごとにまとめて読む。",
+    };
+  }
+
+  return {
+    title: "ワンオラクル",
+    purpose: "1枚のカードを今日の中心メッセージとして読み、気分、判断、行動のヒントに落とし込む。",
+    positionRule:
+      "カード1枚の正位置または逆位置を、今日の選択、注意点、開運アクションに結びつける。イエス/ノーは断定せず傾向として書く。",
+    synthesisRule: "結論では、今日すぐできる小さな行動を一つ以上出す。",
+    structure: `1. 今日の占い
+2. 宿曜だけで見るあなたの基本特性
+3. 今日の心の動きと運勢
+4. 仕事・創作・お金まわり
+5. 恋愛・人間関係
+6. タロットが示す今日の選択
+7. 今日の開運アクション
+最後に一言のキーフレーズ。`,
+    avoid: "カード名の一般的な意味だけで終わらせない。",
+  };
 }
 
 function formatLunarDate(calendar: NonNullable<ReadingInput["calendar"]>) {
