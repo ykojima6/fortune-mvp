@@ -16,6 +16,12 @@ type ReadingInput = {
   } | null;
   tarot: TarotCard;
   reversed: boolean;
+  spreadName?: string;
+  tarotDraws?: Array<{
+    position: string;
+    tarot: TarotCard;
+    reversed: boolean;
+  }>;
 };
 
 const defaultModel = process.env.OPENROUTER_MODEL || "openrouter/free";
@@ -26,6 +32,23 @@ export async function generateReading(input: ReadingInput) {
   const fallback = generateLocalReading(input);
   if (!key) return fallback;
   const today = getJapanTodayLabel();
+  const spreadName = input.spreadName || "ワンオラクル";
+  const draws =
+    input.tarotDraws && input.tarotDraws.length > 0
+      ? input.tarotDraws
+      : [{ position: "今日のメッセージ", tarot: input.tarot, reversed: input.reversed }];
+  const tarotLines = draws
+    .map(
+      (draw, index) =>
+        `${index + 1}. ${draw.position}: ${draw.tarot.jpName}（${draw.tarot.name}）${
+          draw.reversed ? "逆位置" : "正位置"
+        }、意味: ${draw.reversed ? draw.tarot.reversed : draw.tarot.upright}`,
+    )
+    .join("\n");
+  const spreadInstruction =
+    draws.length === 1
+      ? "タロット1枚引きとして、そのカードが今日の選択にどう関係するかをやさしく説明する。"
+      : `${spreadName}として、各ポジションの役割を明示しながら全体の流れを読む。カードごとの説明は小学5年生でもわかる短い言葉にし、最後に全体をまとめる。`;
 
   try {
     const response = await fetchOpenRouter(
@@ -38,13 +61,15 @@ export async function generateReading(input: ReadingInput) {
         },
         {
           role: "user",
-          content: `次の情報から「今日の占い」として、宿曜、暦、タロット1枚引きを統合した占い結果を作成してください。
+          content: `次の情報から「今日の占い」として、宿曜、暦、タロットスプレッドを統合した占い結果を作成してください。
 名前: ${input.profileName}
 生年月日: ${input.birthDate}
 今日: ${today}
 宿曜: ${input.shuku.name}宿（${input.shuku.reading}）、テーマ: ${input.shuku.theme}、強み: ${input.shuku.strength}、注意: ${input.shuku.caution}
 暦: ${input.calendar ? `${formatLunarDate(input.calendar)}、月相${input.calendar.moon_phase ?? "不明"}、六曜${input.calendar.rokuyo ?? "不明"}、干支${input.calendar.sexagenary ?? "不明"}` : "暦DB未登録のため推定"}
-タロット: ${input.tarot.jpName}（${input.tarot.name}）${input.reversed ? "逆位置" : "正位置"}、意味: ${input.reversed ? input.tarot.reversed : input.tarot.upright}
+スプレッド: ${spreadName}
+タロット:
+${tarotLines}
 
 要件:
 - 日本語で2,200〜2,800字程度。最大でも3,000字以内に収める。
@@ -55,6 +80,7 @@ export async function generateReading(input: ReadingInput) {
 - 生年月日からわかる宿曜と、暦、引いたカードの順に根拠を自然に説明する。
 - タロットに関する説明は、小学5年生でもわかる言葉にする。むずかしい熟語や専門用語は避け、短い文で「つまり今日どうすればいいか」を書く。
 - 「タロットが示す今日の選択」の章は、特にやさしい言葉で書く。1文は長くしすぎない。
+- ${spreadInstruction}
 - 医療、法律、投資、ギャンブルの保証や断定は避ける。
 
 構成:
@@ -149,6 +175,19 @@ export function generateLocalReading(input: ReadingInput) {
   const position = input.reversed ? "逆位置" : "正位置";
   const tarotMeaning = input.reversed ? input.tarot.reversed : input.tarot.upright;
   const today = getJapanTodayLabel();
+  const spreadName = input.spreadName || "ワンオラクル";
+  const draws =
+    input.tarotDraws && input.tarotDraws.length > 0
+      ? input.tarotDraws
+      : [{ position: "今日のメッセージ", tarot: input.tarot, reversed: input.reversed }];
+  const spreadSummary = draws
+    .map(
+      (draw, index) =>
+        `${index + 1}. ${draw.position}は${draw.tarot.jpName}（${draw.reversed ? "逆位置" : "正位置"}）。${
+          draw.reversed ? draw.tarot.reversed : draw.tarot.upright
+        }`,
+    )
+    .join("\n");
   const calendarLine = input.calendar
     ? `${formatLunarDate(input.calendar)}、${input.calendar.moon_phase ?? "月相未登録"}、${input.calendar.rokuyo ?? "六曜未登録"}の気配`
     : "暦DB未登録日のため、太陽暦からの推定";
@@ -173,7 +212,10 @@ ${input.shuku.name}宿の人は、表面的には落ち着いて見えても、�
 人間関係では、相手の反応を読みすぎないことが大切です。今日のあなたは、相手の言葉の裏側や表情の変化に敏感になりやすい状態です。好きな人、近い人、仕事で関わる人ほど「本当はどう思っているのだろう」と考えすぎるかもしれません。ただ、今日の運勢では、相手の気持ちを推理するより、自分の希望を丁寧に出す方が関係が安定します。恋愛では、重い確認よりも軽い提案が合います。「少し話せる？」「この日どう？」のように、相手が答えやすい形にすると流れが動きます。
 
 タロットが示す今日の選択
-今日引いたカードは${input.tarot.jpName}（${input.tarot.name}）の${position}です。このカードの意味は「${tarotMeaning}」です。むずかしく言うと、タロットは今日の選び方を教えてくれる合図です。かんたんに言うと、「いつもの考え方だけで決めないで、少しだけやり方を変えてみよう」ということです。今日は、大きな決断をいきなりする日ではありません。まず一つだけ試す。短く連絡する。少しだけ見せる。このくらいの小さな行動が合っています。うまくいくか心配なことも、全部を完璧にしようとしなくて大丈夫です。小さく始めれば、あとから直せます。
+今回のスプレッドは${spreadName}です。
+${spreadSummary}
+
+中心になるカードは${input.tarot.jpName}（${input.tarot.name}）の${position}です。このカードの意味は「${tarotMeaning}」です。むずかしく言うと、タロットは今日の選び方を教えてくれる合図です。かんたんに言うと、「いつもの考え方だけで決めないで、少しだけやり方を変えてみよう」ということです。今日は、大きな決断をいきなりする日ではありません。まず一つだけ試す。短く連絡する。少しだけ見せる。このくらいの小さな行動が合っています。うまくいくか心配なことも、全部を完璧にしようとしなくて大丈夫です。小さく始めれば、あとから直せます。
 
 今日の開運アクション
 今日やるとよいことは三つです。まず、気になっている未完了の連絡を一つだけ終わらせること。次に、作業環境やスマホ内の不要なものを五分だけ整理すること。最後に、自分の本音を一文でメモすることです。「本当はこうしたい」「これは無理しすぎている」「ここは譲りたくない」と短く書くだけで、今日の判断がぶれにくくなります。運を上げる色は青みのある白、または深いネイビー。持ち物は、メモ帳、細いペン、透明感のある小物が合います。

@@ -61,6 +61,28 @@ type TarotSelection = {
   reversed: boolean;
 };
 
+type SpreadId =
+  | "one-oracle"
+  | "two-oracle"
+  | "three-card"
+  | "greek-cross"
+  | "hexagram"
+  | "celtic-cross"
+  | "choice"
+  | "horoscope";
+
+type Spread = {
+  id: SpreadId;
+  name: string;
+  group: string;
+  description: string;
+  positions: string[];
+};
+
+type TarotDraw = TarotSelection & {
+  position: string;
+};
+
 type DeckCard = TarotSelection & {
   deckKey: string;
 };
@@ -75,6 +97,65 @@ type ReadingHistoryItem = {
   result_text: string;
   created_at: string;
 };
+
+const spreads: Spread[] = [
+  {
+    id: "one-oracle",
+    name: "ワンオラクル",
+    group: "シンプル",
+    description: "今日のアドバイスや短い結論を見る1枚引き。",
+    positions: ["今日のメッセージ"],
+  },
+  {
+    id: "two-oracle",
+    name: "ツーオラクル",
+    group: "シンプル",
+    description: "現状と対策、または2つの要素を比べる2枚引き。",
+    positions: ["現状", "対策"],
+  },
+  {
+    id: "three-card",
+    name: "スリーカード",
+    group: "シンプル",
+    description: "過去・現在・未来の流れを見る基本の3枚引き。",
+    positions: ["過去", "現在", "未来"],
+  },
+  {
+    id: "greek-cross",
+    name: "ギリシャ十字",
+    group: "深掘り",
+    description: "現状、障害、対策、結果、最終答えを見る5枚引き。",
+    positions: ["現状", "障害", "対策", "結果", "最終的な答え"],
+  },
+  {
+    id: "hexagram",
+    name: "ヘキサグラム",
+    group: "深掘り",
+    description: "人間関係や恋愛の流れを立体的に見る7枚引き。",
+    positions: ["過去", "現在", "近い未来", "自分の気持ち", "相手や周囲", "障害", "最終結果"],
+  },
+  {
+    id: "celtic-cross",
+    name: "ケルト十字",
+    group: "深掘り",
+    description: "問題の核心から最終結果まで多角的に読む10枚引き。",
+    positions: ["現状", "障害", "顕在意識", "潜在意識", "過去", "近い未来", "自分の姿勢", "周囲の状況", "願望と不安", "最終結果"],
+  },
+  {
+    id: "choice",
+    name: "二者択一",
+    group: "目的別",
+    description: "2つの選択肢を比較し、それぞれの未来を見る5枚引き。",
+    positions: ["現状", "Aを選んだ場合", "Aの未来", "Bを選んだ場合", "Bの未来"],
+  },
+  {
+    id: "horoscope",
+    name: "ホロスコープ",
+    group: "目的別",
+    description: "12ハウスと全体運で人生の各分野を見る13枚引き。",
+    positions: ["全体運", "自分自身", "お金", "学びと発信", "家庭", "恋愛と創作", "健康と習慣", "対人関係", "深い縁", "旅と成長", "仕事と評価", "仲間", "心の奥"],
+  },
+];
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("signin");
@@ -94,7 +175,8 @@ export default function Home() {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [deck, setDeck] = useState<DeckCard[]>(() => createInitialDeck());
-  const [selectedDeckIndex, setSelectedDeckIndex] = useState<number | null>(null);
+  const [selectedDeckIndexes, setSelectedDeckIndexes] = useState<number[]>([]);
+  const [selectedSpreadId, setSelectedSpreadId] = useState<SpreadId>("one-oracle");
   const [history, setHistory] = useState<ReadingHistoryItem[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
@@ -135,13 +217,19 @@ export default function Home() {
   }, []);
 
   const featuredCards = useMemo(() => majorArcana.slice(0, 6), []);
-  const revealedSelection = selectedDeckIndex === null ? null : deck[selectedDeckIndex];
+  const selectedSpread = useMemo(
+    () => spreads.find((spread) => spread.id === selectedSpreadId) ?? spreads[0],
+    [selectedSpreadId],
+  );
+  const isGuest = Boolean(guestProfile && !user);
+  const activeSpread = isGuest ? spreads[0] : selectedSpread;
+  const selectedDeckIndexSet = useMemo(() => new Set(selectedDeckIndexes), [selectedDeckIndexes]);
+  const revealedSelection = selectedDeckIndexes.length > 0 ? deck[selectedDeckIndexes.at(-1)!] : null;
   const revealedCard = revealedSelection ? majorArcana[revealedSelection.cardId] : null;
   const currentCard = reading?.tarot ?? revealedCard;
   const currentReversed = reading?.reversed ?? revealedSelection?.reversed ?? false;
   const activeName = profile?.name || guestProfile?.name || authForm.name || "あなた";
   const activeBirthDate = profile?.birth_date || guestProfile?.birth_date || authForm.birthDate;
-  const isGuest = Boolean(guestProfile && !user);
 
   async function loadProfile(userId: string) {
     if (!supabase) return;
@@ -210,23 +298,32 @@ export default function Home() {
     }
   }
 
-  async function createReading(selection: TarotSelection) {
+  async function createReading(draws: TarotDraw[]) {
     if (!activeBirthDate) {
       setAuthMessage("生年月日を登録してから占ってください。");
       return;
     }
+    const firstDraw = draws[0];
+    if (!firstDraw) return;
 
     setBusy(true);
     setChat([]);
     try {
+      const token = user ? await getAccessToken() : null;
       const response = await fetch("/api/reading", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           name: activeName,
           birthDate: activeBirthDate,
-          tarotCardId: selection.cardId,
-          tarotReversed: selection.reversed,
+          tarotCardId: firstDraw.cardId,
+          tarotReversed: firstDraw.reversed,
+          spreadId: activeSpread.id,
+          spreadName: activeSpread.name,
+          tarotDraws: draws,
         }),
       });
       const data = await response.json();
@@ -240,15 +337,32 @@ export default function Home() {
   }
 
   async function chooseDeckCard(index: number) {
-    if (busy || selectedDeckIndex !== null) return;
-    const selection = deck[index];
-    setSelectedDeckIndex(index);
-    await createReading(selection);
+    if (busy || selectedDeckIndexSet.has(index) || selectedDeckIndexes.length >= activeSpread.positions.length) return;
+    const nextIndexes = [...selectedDeckIndexes, index];
+    setSelectedDeckIndexes(nextIndexes);
+    if (nextIndexes.length === activeSpread.positions.length) {
+      const draws = nextIndexes.map((deckIndex, drawIndex) => ({
+        cardId: deck[deckIndex].cardId,
+        reversed: deck[deckIndex].reversed,
+        position: activeSpread.positions[drawIndex],
+      }));
+      await createReading(draws);
+    }
   }
 
   function shuffleForRedraw() {
     setDeck(createShuffledDeck());
-    setSelectedDeckIndex(null);
+    setSelectedDeckIndexes([]);
+    setReading(null);
+    setChat([]);
+    setQuestion("");
+    setAuthMessage("");
+  }
+
+  function changeSpread(spreadId: SpreadId) {
+    setSelectedSpreadId(spreadId);
+    setDeck(createShuffledDeck());
+    setSelectedDeckIndexes([]);
     setReading(null);
     setChat([]);
     setQuestion("");
@@ -262,7 +376,7 @@ export default function Home() {
     setQuestion("");
     setAuthMessage("");
     setDeck(createShuffledDeck());
-    setSelectedDeckIndex(null);
+    setSelectedDeckIndexes([]);
   }
 
   function exitGuestReading() {
@@ -272,7 +386,7 @@ export default function Home() {
     setQuestion("");
     setAuthMessage("");
     setDeck(createShuffledDeck());
-    setSelectedDeckIndex(null);
+    setSelectedDeckIndexes([]);
   }
 
   async function getAccessToken() {
@@ -353,7 +467,7 @@ export default function Home() {
       setHistory((items) => items.filter((item) => item.id !== id));
       if (reading?.id === id) {
         setReading(null);
-        setSelectedDeckIndex(null);
+        setSelectedDeckIndexes([]);
         setChat([]);
         setQuestion("");
       }
@@ -379,7 +493,7 @@ export default function Home() {
       calendar: { solar_date: item.calendar_date },
       reading: item.result_text,
     });
-    setSelectedDeckIndex(null);
+    setSelectedDeckIndexes([]);
     setChat([]);
     setQuestion("");
     setAuthMessage("");
@@ -523,7 +637,7 @@ export default function Home() {
                             ? `${currentCard.name} / ${currentReversed ? "逆位置" : "正位置"}`
                             : "裏向きの22枚から1枚選んでください"}
                         </p>
-                        {busy && selectedDeckIndex !== null && (
+                        {busy && selectedDeckIndexes.length > 0 && (
                           <div className="mt-3">
                             <LoadingPulse compact />
                           </div>
@@ -537,7 +651,7 @@ export default function Home() {
                     className="mt-4 flex w-full items-center justify-center gap-2 border border-white/15 px-4 py-3 font-semibold text-white transition hover:border-cyan-200/70 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-60"
                   >
                     <Shuffle className="h-5 w-5" />
-                    {selectedDeckIndex === null ? "シャッフルし直す" : "もう一度シャッフルして引き直す"}
+                    {selectedDeckIndexes.length === 0 ? "シャッフルし直す" : "もう一度シャッフルして引き直す"}
                   </button>
                   {authMessage && <p className="mt-4 text-sm text-amber-100">{authMessage}</p>}
                 </div>
@@ -615,25 +729,84 @@ export default function Home() {
                   </div>
                 )}
 
+                {user ? (
+                  <div className="border border-white/10 bg-white/[0.04] p-5">
+                    <div className="mb-4">
+                      <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Spread</p>
+                      <h3 className="mt-2 text-xl font-semibold text-white">スプレッドを選ぶ</h3>
+                    </div>
+                    <div className="grid gap-2">
+                      {spreads.map((spread) => (
+                        <button
+                          key={spread.id}
+                          type="button"
+                          onClick={() => changeSpread(spread.id)}
+                          disabled={busy}
+                          className={`border p-3 text-left transition ${
+                            selectedSpreadId === spread.id
+                              ? "border-cyan-200/70 bg-cyan-200/10"
+                              : "border-white/10 bg-black/20 hover:border-white/35"
+                          }`}
+                        >
+                          <span className="flex items-center justify-between gap-3">
+                            <span className="font-semibold text-white">{spread.name}</span>
+                            <span className="text-xs text-cyan-100/60">{spread.positions.length}枚</span>
+                          </span>
+                          <span className="mt-1 block text-xs text-stone-500">{spread.group}</span>
+                          <span className="mt-2 block text-sm leading-6 text-stone-400">{spread.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border border-white/10 bg-white/[0.04] p-5 text-sm leading-7 text-stone-400">
+                    体験モードではワンオラクルのみ利用できます。複数枚のスプレッドはログイン後に選べます。
+                  </div>
+                )}
+
                 <div className="border border-white/10 bg-white/[0.04] p-5">
                   <div className="mb-4 flex items-end justify-between gap-3">
                     <div>
                       <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Major Arcana</p>
-                      <h3 className="mt-2 text-xl font-semibold text-white">裏向きの22枚から選ぶ</h3>
+                      <h3 className="mt-2 text-xl font-semibold text-white">{activeSpread.name}</h3>
+                      <p className="mt-2 text-sm leading-6 text-stone-400">
+                        {activeSpread.positions.length}枚中{selectedDeckIndexes.length}枚選択済み。順番にカードを選んでください。
+                      </p>
                     </div>
-                    <p className="text-sm text-stone-400">{busy ? "展開中..." : "1枚だけ選択"}</p>
+                    <p className="text-sm text-stone-400">
+                      {busy ? "展開中..." : `${activeSpread.positions.length}枚引き`}
+                    </p>
+                  </div>
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {activeSpread.positions.map((position, index) => {
+                      const selectedIndex = selectedDeckIndexes[index];
+                      const selected = selectedIndex === undefined ? null : deck[selectedIndex];
+                      const card = selected ? majorArcana[selected.cardId] : null;
+                      return (
+                        <span
+                          key={`${position}-${index}`}
+                          className={`border px-3 py-2 text-xs ${
+                            card ? "border-cyan-200/50 bg-cyan-200/10 text-cyan-50" : "border-white/10 text-stone-500"
+                          }`}
+                        >
+                          {index + 1}. {position}
+                          {card ? ` / ${card.jpName}${selected?.reversed ? "逆" : "正"}` : ""}
+                        </span>
+                      );
+                    })}
                   </div>
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-4 2xl:grid-cols-6">
                     {deck.map((deckCard, index) => {
                       const card = majorArcana[deckCard.cardId];
-                      const revealed = selectedDeckIndex === index;
-                      const locked = selectedDeckIndex !== null && !revealed;
+                      const revealed = selectedDeckIndexSet.has(index);
+                      const revealedOrder = selectedDeckIndexes.indexOf(index);
+                      const locked = selectedDeckIndexes.length >= activeSpread.positions.length && !revealed;
                       return (
                         <button
                           key={deckCard.deckKey}
                           type="button"
                           onClick={() => chooseDeckCard(index)}
-                          disabled={busy || selectedDeckIndex !== null}
+                          disabled={busy || selectedDeckIndexSet.has(index) || locked}
                           className={`group min-w-0 border p-1.5 transition ${
                             revealed
                               ? "border-cyan-200 bg-cyan-200/15"
@@ -676,7 +849,9 @@ export default function Home() {
                             </div>
                           </div>
                           <span className="mt-1 block truncate text-xs text-stone-300 group-hover:text-white">
-                            {revealed ? `${card.jpName} / ${deckCard.reversed ? "逆" : "正"}` : `${index + 1}`}
+                            {revealed
+                              ? `${revealedOrder + 1}. ${card.jpName} / ${deckCard.reversed ? "逆" : "正"}`
+                              : `${index + 1}`}
                           </span>
                         </button>
                       );
@@ -700,30 +875,6 @@ export default function Home() {
                             <p className="text-sm text-cyan-100/70">Drawn card</p>
                             <h3 className="mt-2 text-2xl font-semibold text-white">{reading.tarot.jpName}</h3>
                           </div>
-                          {user && (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={saveReading}
-                              disabled={saveBusy || Boolean(reading.id)}
-                              className="inline-flex items-center gap-2 border border-cyan-200/40 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
-                            >
-                              <Save className="h-4 w-4" />
-                              {reading.id ? "保存済み" : saveBusy ? "保存中" : "保存"}
-                            </button>
-                            {reading.id && (
-                              <button
-                                type="button"
-                                onClick={() => deleteReading(reading.id!)}
-                                disabled={deleteBusyId === reading.id}
-                                className="inline-flex items-center gap-2 border border-red-200/30 px-3 py-2 text-sm font-semibold text-red-100 transition hover:border-red-100 hover:bg-red-100/10 disabled:cursor-wait disabled:opacity-60"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                {deleteBusyId === reading.id ? "削除中" : "削除"}
-                              </button>
-                            )}
-                          </div>
-                          )}
                         </div>
                         <p className="mt-1 text-stone-400">
                           {reading.tarot.name} / {reading.reversed ? "逆位置" : "正位置"}
@@ -749,6 +900,40 @@ export default function Home() {
                     <article className="prose prose-invert max-w-none prose-p:leading-8">
                       <h2 className="mb-6 text-3xl font-semibold text-white">今日の占い結果</h2>
                       <div className="whitespace-pre-wrap text-stone-200">{reading.reading}</div>
+                      {user && (
+                        <div className="not-prose mt-8 border border-white/10 bg-black/20 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-white">この占い結果を保存</p>
+                              <p className="mt-1 text-sm text-stone-400">
+                                内容を確認して、あとで見返したい結果だけ履歴に残せます。
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={saveReading}
+                                disabled={saveBusy || Boolean(reading.id)}
+                                className="inline-flex items-center gap-2 border border-cyan-200/40 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
+                              >
+                                <Save className="h-4 w-4" />
+                                {reading.id ? "保存済み" : saveBusy ? "保存中" : "結果を保存"}
+                              </button>
+                              {reading.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => deleteReading(reading.id!)}
+                                  disabled={deleteBusyId === reading.id}
+                                  className="inline-flex items-center gap-2 border border-red-200/30 px-4 py-3 text-sm font-semibold text-red-100 transition hover:border-red-100 hover:bg-red-100/10 disabled:cursor-wait disabled:opacity-60"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  {deleteBusyId === reading.id ? "削除中" : "保存を削除"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-8 space-y-3">
                         {chat.map((message, index) => (
                           <div
@@ -772,9 +957,9 @@ export default function Home() {
                       ) : (
                         <>
                           <MessageCircle className="mb-5 h-12 w-12 text-cyan-100/50" />
-                          <h2 className="text-2xl font-semibold text-white">カードを1枚選んでください</h2>
+                          <h2 className="text-2xl font-semibold text-white">カードを選んでください</h2>
                           <p className="mt-3 max-w-md text-stone-400">
-                            裏向きのカードを選ぶと、そのカードが表になり、正位置・逆位置が決定して占い結果を生成します。
+                            選んだカードが表になり、必要枚数がそろうと正位置・逆位置を含めて占い結果を生成します。
                           </p>
                         </>
                       )}
