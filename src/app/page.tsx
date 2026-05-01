@@ -168,6 +168,11 @@ export default function Home() {
     email: "",
     password: "",
   });
+  const [compatibilityForm, setCompatibilityForm] = useState({
+    enabled: false,
+    name: "",
+    birthDate: "",
+  });
   const [authMessage, setAuthMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState<ReadingResult | null>(null);
@@ -304,6 +309,10 @@ export default function Home() {
       setAuthMessage("生年月日を登録してから占ってください。");
       return;
     }
+    if (user && compatibilityForm.enabled && !compatibilityForm.birthDate) {
+      setAuthMessage("相性を見る場合は、相手の生年月日を入力してください。");
+      return;
+    }
     const firstDraw = draws[0];
     if (!firstDraw) return;
 
@@ -325,6 +334,13 @@ export default function Home() {
           spreadId: activeSpread.id,
           spreadName: activeSpread.name,
           tarotDraws: draws,
+          partner:
+            user && compatibilityForm.enabled && compatibilityForm.birthDate
+              ? {
+                  name: compatibilityForm.name || "相手",
+                  birthDate: compatibilityForm.birthDate,
+                }
+              : null,
         }),
       });
       const data = await response.json();
@@ -352,16 +368,15 @@ export default function Home() {
   }
 
   function shuffleForRedraw() {
-    setDeck(createShuffledDeck());
-    setSelectedDeckIndexes([]);
-    setReading(null);
-    setChat([]);
-    setQuestion("");
-    setAuthMessage("");
+    resetDrawState();
   }
 
   function changeSpread(spreadId: SpreadId) {
     setSelectedSpreadId(spreadId);
+    resetDrawState();
+  }
+
+  function resetDrawState() {
     setDeck(createShuffledDeck());
     setSelectedDeckIndexes([]);
     setReading(null);
@@ -765,6 +780,45 @@ export default function Home() {
                           <span className="mt-2 block text-sm leading-6 text-stone-400">{spread.description}</span>
                         </button>
                       ))}
+                    </div>
+                    <div className="mt-5 border border-white/10 bg-black/20 p-4">
+                      <label className="flex items-center gap-3 text-sm font-semibold text-white">
+                        <input
+                          type="checkbox"
+                          checked={compatibilityForm.enabled}
+                          onChange={(event) => {
+                            setCompatibilityForm({ ...compatibilityForm, enabled: event.target.checked });
+                            resetDrawState();
+                          }}
+                          className="h-4 w-4 accent-cyan-200"
+                        />
+                        相手との相性も占う
+                      </label>
+                      {compatibilityForm.enabled && (
+                        <div className="mt-4 grid gap-3">
+                          <Field
+                            icon={<User className="h-5 w-5" />}
+                            label="相手の名前（任意）"
+                            autoComplete="off"
+                            value={compatibilityForm.name}
+                            onChange={(value) => setCompatibilityForm({ ...compatibilityForm, name: value })}
+                          />
+                          <Field
+                            icon={<CalendarDays className="h-5 w-5" />}
+                            label="相手の生年月日"
+                            type="date"
+                            value={compatibilityForm.birthDate}
+                            onChange={(value) => {
+                              setCompatibilityForm({ ...compatibilityForm, birthDate: value });
+                              resetDrawState();
+                            }}
+                            required
+                          />
+                          <p className="text-xs leading-5 text-stone-500">
+                            相性をオンにすると、あなたと相手の宿曜を合わせてスプレッドを読みます。
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
