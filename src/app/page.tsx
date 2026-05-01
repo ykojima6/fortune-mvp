@@ -9,8 +9,10 @@ import {
   Mail,
   MessageCircle,
   Moon,
+  Save,
   Shuffle,
   Sparkles,
+  Trash2,
   User,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -89,6 +91,8 @@ export default function Home() {
   const [selectedDeckIndex, setSelectedDeckIndex] = useState<number | null>(null);
   const [history, setHistory] = useState<ReadingHistoryItem[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -212,7 +216,6 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user?.id,
           name,
           birthDate,
           tarotCardId: selection.cardId,
@@ -222,7 +225,6 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "占い生成に失敗しました。");
       setReading(data);
-      if (user?.id) void loadHistory(user.id);
     } catch (error) {
       setAuthMessage(error instanceof Error ? error.message : "占い生成に失敗しました。");
     } finally {
@@ -244,6 +246,95 @@ export default function Home() {
     setChat([]);
     setQuestion("");
     setAuthMessage("");
+  }
+
+  async function getAccessToken() {
+    if (!supabase) return null;
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  async function saveReading() {
+    if (!reading || !user) return;
+    if (reading.id) {
+      setAuthMessage("この占い結果は保存済みです。");
+      return;
+    }
+
+    const calendarDate = reading.calendar?.solar_date ?? profile?.birth_date;
+    if (!calendarDate) {
+      setAuthMessage("保存に必要な日付情報がありません。");
+      return;
+    }
+
+    setSaveBusy(true);
+    setAuthMessage("");
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("ログインが必要です。");
+
+      const response = await fetch("/api/readings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          shukuName: reading.shuku.name,
+          shukuIndex: reading.shuku.index,
+          tarotCardId: reading.tarot.id,
+          tarotReversed: reading.reversed,
+          calendarDate,
+          resultText: reading.reading,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "履歴の保存に失敗しました。");
+
+      setReading((current) => (current ? { ...current, id: data.id } : current));
+      await loadHistory(user.id);
+      setAuthMessage("占い結果を保存しました。");
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "履歴の保存に失敗しました。");
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  async function deleteReading(id: string) {
+    if (!user) return;
+    const confirmed = window.confirm("この占い履歴を削除しますか？");
+    if (!confirmed) return;
+
+    setDeleteBusyId(id);
+    setAuthMessage("");
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("ログインが必要です。");
+
+      const response = await fetch("/api/readings", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "履歴の削除に失敗しました。");
+
+      setHistory((items) => items.filter((item) => item.id !== id));
+      if (reading?.id === id) {
+        setReading(null);
+        setChat([]);
+        setQuestion("");
+      }
+      setAuthMessage("占い履歴を削除しました。");
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "履歴の削除に失敗しました。");
+    } finally {
+      setDeleteBusyId(null);
+    }
   }
 
   function openHistory(item: ReadingHistoryItem) {
@@ -430,39 +521,53 @@ export default function Home() {
                         const card = majorArcana[item.tarot_card_id] ?? majorArcana[0];
                         const active = reading?.id === item.id;
                         return (
-                          <button
+                          <div
                             key={item.id}
-                            type="button"
-                            onClick={() => openHistory(item)}
-                            className={`grid w-full grid-cols-[44px_1fr] gap-3 border p-2 text-left transition ${
+                            className={`grid grid-cols-[1fr_auto] gap-2 border p-2 transition ${
                               active
                                 ? "border-cyan-200/70 bg-cyan-200/10"
                                 : "border-white/10 bg-black/20 hover:border-white/35"
                             }`}
                           >
-                            <Image
-                              src={card.image}
-                              alt={card.jpName}
-                              width={88}
-                              height={147}
-                              className={`aspect-[3/5] w-full object-cover ${item.tarot_reversed ? "rotate-180" : ""}`}
-                            />
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-semibold text-white">
-                                {formatHistoryDate(item.created_at)}
+                            <button
+                              type="button"
+                              onClick={() => openHistory(item)}
+                              className="grid min-w-0 grid-cols-[44px_1fr] gap-3 text-left"
+                            >
+                              <Image
+                                src={card.image}
+                                alt={card.jpName}
+                                width={88}
+                                height={147}
+                                className={`aspect-[3/5] w-full object-cover ${item.tarot_reversed ? "rotate-180" : ""}`}
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold text-white">
+                                  {formatHistoryDate(item.created_at)}
+                                </span>
+                                <span className="mt-1 block truncate text-xs text-stone-400">
+                                  {item.shuku_name}宿 / {card.jpName} / {item.tarot_reversed ? "逆位置" : "正位置"}
+                                </span>
+                                <span className="mt-1 block text-xs text-cyan-100/60">{item.calendar_date}</span>
                               </span>
-                              <span className="mt-1 block truncate text-xs text-stone-400">
-                                {item.shuku_name}宿 / {card.jpName} / {item.tarot_reversed ? "逆位置" : "正位置"}
-                              </span>
-                              <span className="mt-1 block text-xs text-cyan-100/60">{item.calendar_date}</span>
-                            </span>
-                          </button>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteReading(item.id)}
+                              disabled={deleteBusyId === item.id}
+                              className="grid h-10 w-10 place-items-center border border-white/10 text-stone-400 transition hover:border-red-100/60 hover:text-red-100 disabled:cursor-wait disabled:opacity-50"
+                              aria-label="履歴を削除"
+                              title="履歴を削除"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
                   ) : (
                     <p className="border border-white/10 bg-black/20 p-4 text-sm leading-6 text-stone-400">
-                      まだ履歴はありません。カードを選んで占うと、このアカウントに結果が保存されます。
+                      まだ履歴はありません。占い結果を保存すると、このアカウントの履歴に表示されます。
                     </p>
                   )}
                 </div>
@@ -547,8 +652,34 @@ export default function Home() {
                         className={reading.reversed ? "rotate-180" : ""}
                       />
                       <div>
-                        <p className="text-sm text-cyan-100/70">Drawn card</p>
-                        <h3 className="mt-2 text-2xl font-semibold text-white">{reading.tarot.jpName}</h3>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm text-cyan-100/70">Drawn card</p>
+                            <h3 className="mt-2 text-2xl font-semibold text-white">{reading.tarot.jpName}</h3>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={saveReading}
+                              disabled={saveBusy || Boolean(reading.id)}
+                              className="inline-flex items-center gap-2 border border-cyan-200/40 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
+                            >
+                              <Save className="h-4 w-4" />
+                              {reading.id ? "保存済み" : saveBusy ? "保存中" : "保存"}
+                            </button>
+                            {reading.id && (
+                              <button
+                                type="button"
+                                onClick={() => deleteReading(reading.id!)}
+                                disabled={deleteBusyId === reading.id}
+                                className="inline-flex items-center gap-2 border border-red-200/30 px-3 py-2 text-sm font-semibold text-red-100 transition hover:border-red-100 hover:bg-red-100/10 disabled:cursor-wait disabled:opacity-60"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                {deleteBusyId === reading.id ? "削除中" : "削除"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                         <p className="mt-1 text-stone-400">
                           {reading.tarot.name} / {reading.reversed ? "逆位置" : "正位置"}
                         </p>

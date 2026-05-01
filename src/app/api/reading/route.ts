@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { generateLocalReading, generateReading } from "@/lib/openrouter";
 import { resolveShuku, type LunarCalendarDay } from "@/lib/shukuyo";
-import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { drawTarot, majorArcana } from "@/lib/tarot";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const name = String(body.name || "").trim();
   const birthDate = String(body.birthDate || "").trim();
-  const userId = body.userId ? String(body.userId) : null;
 
   if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
     return NextResponse.json({ error: "name and birthDate are required" }, { status: 400 });
@@ -46,25 +45,7 @@ export async function POST(request: Request) {
   };
   const reading = await withTimeout(generateReading(readingInput), 33000, generateLocalReading(readingInput));
 
-  let savedId: string | null = null;
-  if (supabaseAdmin && userId) {
-    const { data } = await supabaseAdmin
-      .from("readings")
-      .insert({
-        user_id: userId,
-        shuku_name: shuku.name,
-        shuku_index: shuku.index,
-        tarot_card_id: card.id,
-        tarot_reversed: reversed,
-        calendar_date: birthDate,
-        result_text: reading,
-      })
-      .select("id")
-      .single();
-    savedId = data?.id ?? null;
-  }
-
-  return NextResponse.json({ id: savedId, shuku, tarot: card, reversed, calendar, reading });
+  return NextResponse.json({ id: null, shuku, tarot: card, reversed, calendar, reading });
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
