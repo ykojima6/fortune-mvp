@@ -157,6 +157,25 @@ const spreads: Spread[] = [
   },
 ];
 
+const memberFeatures = [
+  {
+    title: "占い結果を保存",
+    description: "読んで残したい結果だけ履歴に保存できます。",
+  },
+  {
+    title: "過去の履歴を見返す",
+    description: "保存した占いをアカウントごとに一覧で確認できます。",
+  },
+  {
+    title: "複数枚スプレッド",
+    description: "ケルト十字、ヘキサグラム、二者択一などが使えます。",
+  },
+  {
+    title: "相性リーディング",
+    description: "相手の生年月日を入れて、宿曜とタロットで相性を読めます。",
+  },
+];
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("signin");
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -1229,6 +1248,19 @@ function AuthPanel({
           </button>
           {message && <p className="text-sm text-amber-100">{message}</p>}
         </form>
+
+        <div className="mt-6 border border-cyan-200/20 bg-cyan-200/[0.05] p-4">
+          <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Member features</p>
+          <h2 className="mt-2 text-xl font-semibold text-white">登録するとできること</h2>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {memberFeatures.map((feature) => (
+              <div key={feature.title} className="border border-white/10 bg-black/20 p-3">
+                <p className="text-sm font-semibold text-white">{feature.title}</p>
+                <p className="mt-1 text-xs leading-5 text-stone-400">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className="my-7 border-t border-white/10" />
 
