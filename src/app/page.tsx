@@ -217,7 +217,7 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const featuredCards = useMemo(() => majorArcana.slice(0, 6), []);
+  const featuredCards = useMemo(() => createFeaturedCards(), []);
   const selectedSpread = useMemo(
     () => spreads.find((spread) => spread.id === selectedSpreadId) ?? spreads[0],
     [selectedSpreadId],
@@ -1013,6 +1013,12 @@ function createShuffledDeck(): DeckCard[] {
   }
 
   return cards;
+}
+
+function createFeaturedCards() {
+  return createShuffledDeck()
+    .slice(0, 6)
+    .map((deckCard) => majorArcana[deckCard.cardId]);
 }
 
 function createInitialDeck(): DeckCard[] {
