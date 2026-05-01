@@ -20,7 +20,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { majorArcana, tarotBackImage, type TarotCard } from "@/lib/tarot";
 import { shukuList, type Shuku } from "@/lib/shukuyo";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "reset-request" | "reset-update";
 
 type ReadingResult = {
   id: string | null;
@@ -205,6 +205,7 @@ export default function Home() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const drawnCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -219,7 +220,11 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsPasswordRecovery(true);
+        setMode("reset-update");
+      }
       setUser(session?.user ?? null);
       if (session?.user) {
         void loadProfile(session.user.id);
@@ -290,7 +295,18 @@ export default function Home() {
         return;
       }
 
-      if (mode === "signup") {
+      if (mode === "reset-request") {
+        const { error } = await supabase.auth.resetPasswordForEmail(authForm.email, {
+          redirectTo: window.location.origin,
+        });
+        if (error) throw error;
+        setAuthMessage("パスワード再設定用のメールを送信しました。メール内のリンクを開いてください。");
+      } else if (mode === "reset-update") {
+        const { error } = await supabase.auth.updateUser({ password: authForm.password });
+        if (error) throw error;
+        setIsPasswordRecovery(false);
+        setAuthMessage("パスワードを更新しました。");
+      } else if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
           email: authForm.email,
           password: authForm.password,
@@ -628,7 +644,7 @@ export default function Home() {
             </div>
           )}
 
-          {!user && !guestProfile ? (
+          {isPasswordRecovery || (!user && !guestProfile) ? (
             <AuthPanel
               mode={mode}
               setMode={setMode}
@@ -636,6 +652,7 @@ export default function Home() {
               setForm={setAuthForm}
               onSubmit={submitAuth}
               onStartGuest={startGuestReading}
+              isPasswordRecovery={isPasswordRecovery}
               busy={busy}
               message={authMessage}
             />
@@ -1161,6 +1178,7 @@ function AuthPanel({
   setForm,
   onSubmit,
   onStartGuest,
+  isPasswordRecovery,
   busy,
   message,
 }: {
@@ -1170,10 +1188,13 @@ function AuthPanel({
   setForm: (form: { name: string; birthDate: string; email: string; password: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onStartGuest: (name: string, birthDate: string) => void;
+  isPasswordRecovery: boolean;
   busy: boolean;
   message: string;
 }) {
   const [guestForm, setGuestForm] = useState({ name: "", birthDate: "" });
+  const isResetRequest = mode === "reset-request";
+  const isResetUpdate = mode === "reset-update";
 
   function submitGuest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1183,22 +1204,38 @@ function AuthPanel({
   return (
     <section className="mx-auto flex w-full max-w-xl flex-1 items-center">
       <div className="w-full border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/30 md:p-7">
-        <div className="mb-6 grid grid-cols-2 border border-white/10 p-1">
-          <button
-            onClick={() => setMode("signin")}
-            className={mode === "signin" ? "bg-white py-3 font-semibold text-black" : "py-3 text-stone-400"}
-            type="button"
-          >
-            ログイン
-          </button>
-          <button
-            onClick={() => setMode("signup")}
-            className={mode === "signup" ? "bg-white py-3 font-semibold text-black" : "py-3 text-stone-400"}
-            type="button"
-          >
-            新規登録
-          </button>
-        </div>
+        {!isResetUpdate && (
+          <div className="mb-6 grid grid-cols-2 border border-white/10 p-1">
+            <button
+              onClick={() => setMode("signin")}
+              className={mode === "signin" ? "bg-white py-3 font-semibold text-black" : "py-3 text-stone-400"}
+              type="button"
+            >
+              ログイン
+            </button>
+            <button
+              onClick={() => setMode("signup")}
+              className={mode === "signup" ? "bg-white py-3 font-semibold text-black" : "py-3 text-stone-400"}
+              type="button"
+            >
+              新規登録
+            </button>
+          </div>
+        )}
+
+        {(isResetRequest || isResetUpdate) && (
+          <div className="mb-6 border border-cyan-200/20 bg-cyan-200/[0.05] p-4">
+            <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Password reset</p>
+            <h2 className="mt-2 text-xl font-semibold text-white">
+              {isResetUpdate ? "新しいパスワードを設定" : "パスワードをリセット"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-stone-400">
+              {isResetUpdate
+                ? "新しいパスワードを入力してください。更新後、そのままログイン状態で利用できます。"
+                : "登録メールアドレスに再設定用リンクを送信します。"}
+            </p>
+          </div>
+        )}
 
         <form onSubmit={onSubmit} className="space-y-4">
           {mode === "signup" && (
@@ -1221,34 +1258,65 @@ function AuthPanel({
               />
             </>
           )}
-          <Field
-            icon={<Mail className="h-5 w-5" />}
-            label="メールアドレス"
-            type="email"
-            autoComplete="email"
-            value={form.email}
-            onChange={(value) => setForm({ ...form, email: value })}
-            required
-          />
-          <Field
-            icon={<Lock className="h-5 w-5" />}
-            label="パスワード"
-            type="password"
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
-            value={form.password}
-            onChange={(value) => setForm({ ...form, password: value })}
-            required
-          />
+          {!isResetUpdate && (
+            <Field
+              icon={<Mail className="h-5 w-5" />}
+              label="メールアドレス"
+              type="email"
+              autoComplete="email"
+              value={form.email}
+              onChange={(value) => setForm({ ...form, email: value })}
+              required
+            />
+          )}
+          {!isResetRequest && (
+            <Field
+              icon={<Lock className="h-5 w-5" />}
+              label={isResetUpdate ? "新しいパスワード" : "パスワード"}
+              type="password"
+              autoComplete={mode === "signup" || isResetUpdate ? "new-password" : "current-password"}
+              value={form.password}
+              onChange={(value) => setForm({ ...form, password: value })}
+              required
+            />
+          )}
 
           <button
             disabled={busy}
             className="mt-2 w-full bg-cyan-200 px-5 py-4 font-semibold text-black transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
           >
-            {busy ? "処理中..." : mode === "signup" ? "アカウントを作成" : "ログイン"}
+            {busy
+              ? "処理中..."
+              : mode === "signup"
+                ? "アカウントを作成"
+                : isResetRequest
+                  ? "再設定メールを送信"
+                  : isResetUpdate
+                    ? "パスワードを更新"
+                    : "ログイン"}
           </button>
+          {mode === "signin" && (
+            <button
+              type="button"
+              onClick={() => setMode("reset-request")}
+              className="w-full py-1 text-sm text-cyan-100/70 transition hover:text-cyan-100"
+            >
+              パスワードを忘れた場合
+            </button>
+          )}
+          {isResetRequest && (
+            <button
+              type="button"
+              onClick={() => setMode("signin")}
+              className="w-full py-1 text-sm text-stone-400 transition hover:text-white"
+            >
+              ログインに戻る
+            </button>
+          )}
           {message && <p className="text-sm text-amber-100">{message}</p>}
         </form>
 
+        {!isPasswordRecovery && (
         <div className="mt-6 border border-cyan-200/20 bg-cyan-200/[0.05] p-4">
           <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Member features</p>
           <h2 className="mt-2 text-xl font-semibold text-white">登録するとできること</h2>
@@ -1261,7 +1329,10 @@ function AuthPanel({
             ))}
           </div>
         </div>
+        )}
 
+        {!isPasswordRecovery && (
+          <>
         <div className="my-7 border-t border-white/10" />
 
         <form onSubmit={submitGuest} className="space-y-4">
@@ -1291,6 +1362,8 @@ function AuthPanel({
             体験をはじめる
           </button>
         </form>
+          </>
+        )}
       </div>
     </section>
   );
