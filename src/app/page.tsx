@@ -326,6 +326,7 @@ export default function Home() {
       setHistory((items) => items.filter((item) => item.id !== id));
       if (reading?.id === id) {
         setReading(null);
+        setSelectedDeckIndex(null);
         setChat([]);
         setQuestion("");
       }
