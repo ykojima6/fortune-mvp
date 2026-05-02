@@ -18,6 +18,7 @@ type ReadingInput = {
   calendar: CalendarInfo;
   tarot: TarotCard;
   reversed: boolean;
+  tarotless?: boolean;
   spreadName?: string;
   tarotDraws?: Array<{
     position: string;
@@ -50,22 +51,27 @@ export async function generateReading(input: ReadingInput) {
   if (!key) return fallback;
   const today = getJapanTodayLabel();
   const spreadName = input.spreadName || "ワンオラクル";
+  const useTarot = !input.tarotless;
   const draws =
-    input.tarotDraws && input.tarotDraws.length > 0
+    useTarot && input.tarotDraws && input.tarotDraws.length > 0
       ? input.tarotDraws
-      : [{ position: "今日のメッセージ", tarot: input.tarot, reversed: input.reversed }];
-  const tarotLines = draws
-    .map(
-      (draw, index) =>
-        `${index + 1}. ${draw.position}: ${draw.tarot.jpName}（${draw.tarot.name}）${
-          draw.reversed ? "逆位置" : "正位置"
-        }、意味: ${draw.reversed ? draw.tarot.reversed : draw.tarot.upright}`,
-    )
-    .join("\n");
+      : useTarot
+        ? [{ position: "今日のメッセージ", tarot: input.tarot, reversed: input.reversed }]
+        : [];
+  const tarotLines = useTarot
+    ? draws
+        .map(
+          (draw, index) =>
+            `${index + 1}. ${draw.position}: ${draw.tarot.jpName}（${draw.tarot.name}）${
+              draw.reversed ? "逆位置" : "正位置"
+            }、OLCテキスト由来の意味: ${draw.reversed ? draw.tarot.reversed : draw.tarot.upright}`,
+        )
+        .join("\n")
+    : "今回はタロットを使わない。宿曜と暦だけで相性を読む。";
   const isOneOracle = !input.partner && draws.length === 1 && spreadName === "ワンオラクル";
   const spreadSpec = getSpreadReadingSpec(spreadName, Boolean(input.partner));
   const partnerBlock = input.partner
-    ? `\n相手: ${input.partner.name}\n相手の生年月日: ${input.partner.birthDate}\n相手の宿曜: ${input.partner.shuku.name}宿（${input.partner.shuku.reading}）、テーマ: ${input.partner.shuku.theme}、強み: ${input.partner.shuku.strength}、注意: ${input.partner.shuku.caution}\n相手の暦: ${
+    ? `\n相手: ${input.partner.name}\n相手の生年月日: ${input.partner.birthDate}\n相手の宿曜: ${input.partner.shuku.name}宿（${input.partner.shuku.reading}）、キャッチー名称: ${input.partner.shuku.catchyName}、テーマ: ${input.partner.shuku.theme}、強み: ${input.partner.shuku.strength}、注意: ${input.partner.shuku.caution}\n相手の暦: ${
         input.partner.calendar
           ? `${formatLunarDate(input.partner.calendar)}、月相${input.partner.calendar.moon_phase ?? "不明"}、六曜${input.partner.calendar.rokuyo ?? "不明"}、干支${input.partner.calendar.sexagenary ?? "不明"}`
           : "暦DB未登録のため推定"
@@ -78,11 +84,19 @@ export async function generateReading(input: ReadingInput) {
       : `${spreadName}のリーディング`;
   const lengthRequirement = isOneOracle ? "2,200〜2,800字程度。最大でも3,000字以内" : "1,800〜2,200字程度。最大でも2,500字以内";
   const focusRequirement = input.partner
-    ? "あなたと相手の宿曜の違い、近づきやすい点、すれ違いやすい点、関係をよくする具体策を多めに書く。"
+    ? "タロットには触れず、あなたと相手の宿曜の違い、近づきやすい点、すれ違いやすい点、関係をよくする具体策を多めに書く。"
     : isOneOracle
       ? "前半は「この人自身の性格・思考癖・対人傾向・仕事の進め方」を多めに書く。ユーザーが当たっているか判断しやすい描写にする。"
       : `${spreadName}の固有の目的、ポジション同士の関係、結論の出し方を中心に読む。今日の運勢としては書かない。`;
-  const structure = spreadSpec.structure;
+  const structure = input.partner
+    ? `1. 宿曜だけで見る相性の全体像
+2. あなたの宿とキャッチー名称
+3. 相手の宿とキャッチー名称
+4. 近づきやすいところ
+5. すれ違いやすいところ
+6. 関係をよくする具体的な行動
+最後に一言のキーフレーズ。`
+    : spreadSpec.structure;
 
   try {
     const response = await fetchOpenRouter(
@@ -95,14 +109,14 @@ export async function generateReading(input: ReadingInput) {
         },
         {
           role: "user",
-          content: `次の情報から「${requestTitle}」として、宿曜、暦、タロットスプレッドを統合した占い結果を作成してください。
+          content: `次の情報から「${requestTitle}」として、${useTarot ? "宿曜、暦、タロットスプレッドを統合した" : "宿曜と暦だけを使った"}占い結果を作成してください。
 名前: ${input.profileName}
 生年月日: ${input.birthDate}
 今日: ${today}
-宿曜: ${input.shuku.name}宿（${input.shuku.reading}）、テーマ: ${input.shuku.theme}、強み: ${input.shuku.strength}、注意: ${input.shuku.caution}
+宿曜: ${input.shuku.name}宿（${input.shuku.reading}）、キャッチー名称: ${input.shuku.catchyName}、テーマ: ${input.shuku.theme}、強み: ${input.shuku.strength}、注意: ${input.shuku.caution}
 暦: ${input.calendar ? `${formatLunarDate(input.calendar)}、月相${input.calendar.moon_phase ?? "不明"}、六曜${input.calendar.rokuyo ?? "不明"}、干支${input.calendar.sexagenary ?? "不明"}` : "暦DB未登録のため推定"}
 ${partnerBlock}
-スプレッド: ${spreadName}
+${useTarot ? `スプレッド: ${spreadName}` : "スプレッド: 使用しない"}
 タロット:
 ${tarotLines}
 
@@ -112,18 +126,21 @@ ${tarotLines}
 - ${focusRequirement}
 - 宿曜だけで読む本人特性の章を必ず入れる。この章ではタロットに触れない。
 - ${isOneOracle ? "今日の占いとして、今日の気分、判断、仕事、恋愛・人間関係、注意点、今日やるとよい行動に落とし込む。" : "「今日の占い」という見出しや日運中心の書き方にはしない。選んだテーマや関係性、問題の流れを読む。"}
-- 生年月日からわかる宿曜と、暦、引いたカードの順に根拠を自然に説明する。
-- タロットに関する説明は、小学5年生でもわかる言葉にする。むずかしい熟語や専門用語は避け、短い文で「つまり今日どうすればいいか」を書く。
-- タロットの章は、特にやさしい言葉で書く。1文は長くしすぎない。
-- スプレッド名だけを置き換えた汎用文にしない。必ず次の「スプレッド専用ルール」に従う。
-- カードの意味を順番に並べるだけで終わらせない。最低2回は、別々のポジション同士を比較して流れを説明する。
+- ${useTarot ? "生年月日からわかる宿曜と、暦、引いたカードの順に根拠を自然に説明する。" : "本人と相手の宿曜、キャッチー名称、暦の順に根拠を自然に説明する。"}
+- ${useTarot ? "タロットに関する説明は、小学5年生でもわかる言葉にする。むずかしい熟語や専門用語は避け、短い文で「つまり今日どうすればいいか」を書く。" : "タロット、カード、スプレッド、正位置、逆位置という言葉は本文に出さない。"}
+- ${useTarot ? "タロットの意味は一般的な解釈ではなく、OLCタロットテキスト由来の意味を優先して読む。" : "相性は宿曜だけで占う。恋愛、友人、仕事相手のどれにも使えるように、やさしく具体的に書く。"}
+- ${useTarot ? "スプレッド名だけを置き換えた汎用文にしない。必ず次の「スプレッド専用ルール」に従う。" : "難しい宿曜名だけで終わらせず、キャッチー名称を使って性格が直感的にわかるように書く。"}
+- ${useTarot ? "カードの意味を順番に並べるだけで終わらせない。最低2回は、別々のポジション同士を比較して流れを説明する。" : "二人の違いを、良い悪いではなく役割の違いとして説明する。"}
 - 医療、法律、投資、ギャンブルの保証や断定は避ける。
 
-スプレッド専用ルール:
+${useTarot ? `スプレッド専用ルール:
 - 目的: ${spreadSpec.purpose}
 - ポジションの読み方: ${spreadSpec.positionRule}
 - 総合判断の出し方: ${spreadSpec.synthesisRule}
-- 避ける書き方: ${spreadSpec.avoid}
+- 避ける書き方: ${spreadSpec.avoid}` : `宿曜相性専用ルール:
+- 二人の宿のキャッチー名称を見出し内か本文前半で必ず使う。
+- 本人の宿の強み、相手の宿の強み、ぶつかりやすい注意点を対比する。
+- 最後は「近づき方」「距離の取り方」「言葉の選び方」に落とし込む。`}
 
 構成:
 ${structure}`,
@@ -135,7 +152,7 @@ ${structure}`,
     if (!response.ok) return fallback;
     const data = await response.json();
     const reading = data?.choices?.[0]?.message?.content?.trim();
-    return isUsableReading(reading) ? reading : fallback;
+    return isUsableReading(reading, useTarot) ? reading : fallback;
   } catch {
     return fallback;
   }
@@ -211,10 +228,13 @@ export function generateLocalReading(input: ReadingInput) {
   const tarotMeaning = input.reversed ? input.tarot.reversed : input.tarot.upright;
   const today = getJapanTodayLabel();
   const spreadName = input.spreadName || "ワンオラクル";
+  const useTarot = !input.tarotless;
   const draws =
-    input.tarotDraws && input.tarotDraws.length > 0
+    useTarot && input.tarotDraws && input.tarotDraws.length > 0
       ? input.tarotDraws
-      : [{ position: "今日のメッセージ", tarot: input.tarot, reversed: input.reversed }];
+      : useTarot
+        ? [{ position: "今日のメッセージ", tarot: input.tarot, reversed: input.reversed }]
+        : [];
   const spreadSummary = draws
     .map(
       (draw, index) =>
@@ -229,15 +249,37 @@ export function generateLocalReading(input: ReadingInput) {
   const isOneOracle = !input.partner && draws.length === 1 && spreadName === "ワンオラクル";
   const spreadSpec = getSpreadReadingSpec(spreadName, Boolean(input.partner));
   const partnerLine = input.partner
-    ? `\n相性の相手は${input.partner.name}さんです。生年月日から見る相手の宿曜は${input.partner.shuku.name}宿で、テーマは「${input.partner.shuku.theme}」です。あなたの${input.shuku.name}宿は${input.shuku.strength}ところが強みで、相手の${input.partner.shuku.name}宿は${input.partner.shuku.strength}ところに良さがあります。二人の相性では、同じ速さで進もうとするより、得意な役割を分けるほど関係が安定します。あなたが細部を整え、相手が別の角度から流れを作るようにすると、お互いの良さがぶつからずに出やすくなります。一方で、疲れている時は、相手の何気ない言葉を重く受け取りやすいので、すぐに結論を出さず「今の意味をもう少し教えて」と確認するのがよいでしょう。`
+    ? `\n相性の相手は${input.partner.name}さんです。生年月日から見る相手の宿曜は${input.partner.shuku.name}宿、キャッチー名称は「${input.partner.shuku.catchyName}」です。あなたの${input.shuku.name}宿は「${input.shuku.catchyName}」で、${input.shuku.strength}ところが強み。相手の${input.partner.shuku.name}宿は${input.partner.shuku.strength}ところに良さがあります。二人の相性では、同じ速さで進もうとするより、得意な役割を分けるほど関係が安定します。あなたが細部を整え、相手が別の角度から流れを作るようにすると、お互いの良さがぶつからずに出やすくなります。一方で、疲れている時は、相手の何気ない言葉を重く受け取りやすいので、すぐに結論を出さず「今の意味をもう少し教えて」と確認するのがよいでしょう。`
     : "";
+
+  if (input.partner && !useTarot) {
+    return `宿曜だけで見る相性リーディング
+${input.profileName}さんは${input.shuku.name}宿、わかりやすく言うと「${input.shuku.catchyName}」です。テーマは「${input.shuku.theme}」。${input.partner.name}さんは${input.partner.shuku.name}宿で、「${input.partner.shuku.catchyName}」タイプです。暦ではあなた側に${calendarLine}が重なっているため、今は相手との距離感を感覚だけで決めるより、言葉にして整えるほど関係が安定します。${partnerLine}
+
+あなたの宿とキャッチー名称
+${input.shuku.catchyName}タイプのあなたは、${input.shuku.strength}ことが自然にできます。人に合わせているように見えても、内側には「ここは大事にしたい」という基準があります。注意点は「${input.shuku.caution}」。好きな相手や大事な相手ほど、期待が高くなり、言わなくてもわかってほしい気持ちが出やすいところがあります。
+
+相手の宿とキャッチー名称
+${input.partner.name}さんの${input.partner.shuku.catchyName}タイプは、${input.partner.shuku.strength}ことが強みです。あなたとは見ている場所や安心するテンポが少し違うため、同じ言葉を聞いても受け取り方が変わることがあります。相手の注意点は「${input.partner.shuku.caution}」。ここを責めるより、先に安心できる空気を作ると本音が出やすくなります。
+
+近づきやすいところ
+二人は、得意な役割を分けると相性が良くなります。あなたが気づくこと、相手が動かすこと、または相手が広げたものをあなたが整えること。このように役割が見えると、お互いの良さがぶつからずに出ます。恋愛でも仕事でも、正しさを競うより「どっちが何を担当すると楽か」を話すと距離が縮まります。
+
+すれ違いやすいところ
+すれ違いは、気持ちがないからではなく、安心するタイミングが違うところから起こりやすいです。あなたは細部の違和感を見つけやすく、相手は別のところで流れを見ているかもしれません。だから、急に結論を求めるより「今は確認したいだけ」と前置きするのが大切です。
+
+関係をよくする具体的な行動
+まず、相手に求めていることを一つだけ短く言葉にしてください。次に、相手の良さを一つ具体的に伝えます。最後に、決めたいことがある時は、期限と選択肢を小さくします。二人の宿曜は、違いを消すより、違いを役割に変えるほど味方になります。
+
+キーフレーズ: 違いを責めず、役割に変える。`;
+  }
 
   if (!isOneOracle) {
     return `${input.partner ? "相性リーディング" : `${spreadName}のリーディング`}
-${input.profileName}さんの宿曜は${input.shuku.name}宿です。これは「${input.shuku.theme}」を核に持つ宿で、物事を見る時に自分なりの基準を大切にします。暦では${calendarLine}が重なっているため、今のテーマは勢いだけで進めるより、関係や状況の細部を見直すことにあります。今回の${spreadName}では、カードを一枚ずつ独立して見るより、前後のつながりを読むことが大切です。${partnerLine}
+${input.profileName}さんの宿曜は${input.shuku.name}宿、キャッチー名称は「${input.shuku.catchyName}」です。これは「${input.shuku.theme}」を核に持つ宿で、物事を見る時に自分なりの基準を大切にします。暦では${calendarLine}が重なっているため、今のテーマは勢いだけで進めるより、関係や状況の細部を見直すことにあります。今回の${spreadName}では、OLCタロットテキスト由来のカード意味を使い、カードを一枚ずつ独立して見るより、前後のつながりを読むことが大切です。${partnerLine}
 
 宿曜だけで見るあなたの基本特性
-${input.shuku.name}宿の人は、表面的には落ち着いて見えても、内側にはかなりはっきりした美学や判断基準を持っています。人から強く言われたから動くというより、自分の中で納得できた瞬間に一気に集中力が出るタイプです。強みは${input.shuku.strength}こと。注意点は「${input.shuku.caution}」です。自分の感覚が鋭いぶん、納得できない相手や雑な進め方に対して、心の中で距離を置きやすいところがあります。
+${input.shuku.catchyName}タイプの人は、表面的には落ち着いて見えても、内側にはかなりはっきりした美学や判断基準を持っています。人から強く言われたから動くというより、自分の中で納得できた瞬間に一気に集中力が出るタイプです。強みは${input.shuku.strength}こと。注意点は「${input.shuku.caution}」です。自分の感覚が鋭いぶん、納得できない相手や雑な進め方に対して、心の中で距離を置きやすいところがあります。
 
 スプレッド各ポジションの読み
 ${spreadSummary}
@@ -255,10 +297,10 @@ ${spreadSpec.purpose} ${spreadSpec.positionRule} そのため、中心になる$
   }
 
   return `今日の占い
-${today}の${input.profileName}さんは、外へ勢いよく出るよりも、自分の中にある判断基準を整えるほど運が開きます。生年月日から見る宿曜は${input.shuku.name}宿。これは「${input.shuku.theme}」を核に持つ宿で、今日の流れでは、周囲に合わせるだけではなく「自分は本当は何を大事にしたいのか」を確認することが大切です。暦では${calendarLine}が重なっているため、気分は少し繊細になりやすく、普段なら流せる一言や小さな予定変更にも反応しやすい日です。ただし、それは悪いことではありません。細かな違和感に気づけるぶん、早めに軌道修正できる日でもあります。
+${today}の${input.profileName}さんは、外へ勢いよく出るよりも、自分の中にある判断基準を整えるほど運が開きます。生年月日から見る宿曜は${input.shuku.name}宿、キャッチー名称は「${input.shuku.catchyName}」。これは「${input.shuku.theme}」を核に持つ宿で、今日の流れでは、周囲に合わせるだけではなく「自分は本当は何を大事にしたいのか」を確認することが大切です。暦では${calendarLine}が重なっているため、気分は少し繊細になりやすく、普段なら流せる一言や小さな予定変更にも反応しやすい日です。ただし、それは悪いことではありません。細かな違和感に気づけるぶん、早めに軌道修正できる日でもあります。
 
 宿曜だけで見るあなたの基本特性
-${input.shuku.name}宿の人は、表面的には落ち着いて見えても、内側にはかなりはっきりした美学や判断基準を持っています。人から強く言われたから動くというより、自分の中で納得できた瞬間に一気に集中力が出るタイプです。強みは${input.shuku.strength}こと。派手な勢いで目立つより、積み重ねた経験や観察から「これはこうした方がいい」と見抜く力があります。周囲がまだ雰囲気で話している段階でも、あなたは細部の矛盾、相手の本音、物事の弱い部分に先に気づいていることが多いはずです。
+${input.shuku.catchyName}タイプの人は、表面的には落ち着いて見えても、内側にはかなりはっきりした美学や判断基準を持っています。人から強く言われたから動くというより、自分の中で納得できた瞬間に一気に集中力が出るタイプです。強みは${input.shuku.strength}こと。派手な勢いで目立つより、積み重ねた経験や観察から「これはこうした方がいい」と見抜く力があります。周囲がまだ雰囲気で話している段階でも、あなたは細部の矛盾、相手の本音、物事の弱い部分に先に気づいていることが多いはずです。
 
 一方で、${input.shuku.name}宿の注意点は「${input.shuku.caution}」です。自分の感覚が鋭いぶん、納得できない相手や雑な進め方に対して、心の中で距離を置きやすいところがあります。嫌いになったわけではなくても、説明するより自分で抱えた方が早いと感じてしまう。その結果、周囲からは「何を考えているかわからない」「急に温度が下がった」と受け取られる場合があります。本来のあなたは冷たい人ではなく、むしろ大切なものを雑に扱いたくない人です。だからこそ、今日のような日は、黙って我慢するよりも、短い言葉で境界線を伝える方が運を崩しません。
 
@@ -441,11 +483,12 @@ function formatLunarDate(calendar: NonNullable<ReadingInput["calendar"]>) {
   return `旧暦${calendar.is_leap_month ? "閏" : ""}${calendar.lunar_month}月${calendar.lunar_day}日`;
 }
 
-function isUsableReading(reading: unknown): reading is string {
+function isUsableReading(reading: unknown, requireTarot = true): reading is string {
   if (typeof reading !== "string") return false;
   const length = [...reading].length;
   if (length < 1500 || length > 3200) return false;
-  if (!reading.includes("宿曜") || !reading.includes("タロット")) return false;
+  if (!reading.includes("宿曜")) return false;
+  if (requireTarot && !reading.includes("タロット")) return false;
   return !/(.)\1{5,}|([ぁ-ん]{2,4})\2{2,}/.test(reading);
 }
 

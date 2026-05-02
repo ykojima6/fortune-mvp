@@ -23,13 +23,14 @@ export async function POST(request: Request) {
 
   const shuku = resolveShuku(birthDate, calendar);
   const partnerShuku = partner ? resolveShuku(partner.birthDate, partnerCalendar) : null;
+  const tarotless = Boolean(partner);
   const selectedCardId = Number(body.tarotCardId);
   const hasSelectedCard = Number.isInteger(selectedCardId) && selectedCardId >= 0 && selectedCardId < majorArcana.length;
   const drawn = drawTarot(`${birthDate}:${name}:${new Date().toISOString()}:${Math.random()}`);
   const card = hasSelectedCard ? majorArcana[selectedCardId] : drawn.card;
   const reversed = hasSelectedCard ? Boolean(body.tarotReversed) : drawn.reversed;
-  const tarotDraws = parseTarotDraws(body.tarotDraws, card.id, reversed);
-  if (tarotDraws.length > 1) {
+  const tarotDraws = tarotless ? [] : parseTarotDraws(body.tarotDraws, card.id, reversed);
+  if (!tarotless && tarotDraws.length > 1) {
     if (!userId) {
       return NextResponse.json({ error: "複数枚のスプレッドはログインが必要です。" }, { status: 401 });
     }
@@ -41,13 +42,14 @@ export async function POST(request: Request) {
     calendar,
     tarot: card,
     reversed,
+    tarotless,
     spreadName: String(body.spreadName || "ワンオラクル").trim(),
     tarotDraws,
     partner: partner && partnerShuku ? { ...partner, shuku: partnerShuku, calendar: partnerCalendar } : null,
   };
   const reading = await withTimeout(generateReading(readingInput), 33000, generateLocalReading(readingInput));
 
-  return NextResponse.json({ id: null, shuku, tarot: card, reversed, calendar, reading });
+  return NextResponse.json({ id: null, shuku, tarot: card, reversed, tarotless, calendar, reading });
 }
 
 async function loadCalendarDay(date: string) {

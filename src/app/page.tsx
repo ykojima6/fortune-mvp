@@ -27,6 +27,7 @@ type ReadingResult = {
   shuku: Shuku;
   tarot: TarotCard;
   reversed: boolean;
+  tarotless?: boolean;
   draws?: TarotDraw[];
   calendar: {
     solar_date: string;
@@ -254,11 +255,12 @@ export default function Home() {
   );
   const isGuest = Boolean(guestProfile && !user);
   const activeSpread = isGuest ? spreads[0] : selectedSpread;
+  const isCompatibilityMode = Boolean(user && compatibilityForm.enabled);
   const selectedDeckIndexSet = useMemo(() => new Set(selectedDeckIndexes), [selectedDeckIndexes]);
   const revealedSelection = selectedDeckIndexes.length > 0 ? deck[selectedDeckIndexes.at(-1)!] : null;
   const revealedCard = revealedSelection ? majorArcana[revealedSelection.cardId] : null;
-  const currentCard = reading?.tarot ?? revealedCard;
-  const currentReversed = reading?.reversed ?? revealedSelection?.reversed ?? false;
+  const currentCard = reading?.tarotless ? null : (reading?.tarot ?? revealedCard);
+  const currentReversed = reading?.tarotless ? false : (reading?.reversed ?? revealedSelection?.reversed ?? false);
   const activeName = profile?.name || guestProfile?.name || authForm.name || "あなた";
   const activeBirthDate = profile?.birth_date || guestProfile?.birth_date || authForm.birthDate;
 
@@ -389,7 +391,56 @@ export default function Home() {
     }
   }
 
+  async function createCompatibilityReading() {
+    if (!activeBirthDate) {
+      setAuthMessage("生年月日を登録してから占ってください。");
+      return;
+    }
+    if (!user) {
+      setAuthMessage("相性占いはログインが必要です。");
+      return;
+    }
+    if (!compatibilityForm.birthDate) {
+      setAuthMessage("相性を見る場合は、相手の生年月日を入力してください。");
+      return;
+    }
+
+    setBusy(true);
+    setChat([]);
+    setReading(null);
+    setSelectedDeckIndexes([]);
+    try {
+      const token = await getAccessToken();
+      const response = await fetch("/api/reading", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          name: activeName,
+          birthDate: activeBirthDate,
+          spreadId: "compatibility-shukuyo",
+          spreadName: "宿曜相性",
+          tarotDraws: [],
+          partner: {
+            name: compatibilityForm.name || "相手",
+            birthDate: compatibilityForm.birthDate,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "相性占い生成に失敗しました。");
+      setReading({ ...data, draws: [] });
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "相性占い生成に失敗しました。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function chooseDeckCard(index: number) {
+    if (isCompatibilityMode) return;
     if (busy || selectedDeckIndexSet.has(index) || selectedDeckIndexes.length >= activeSpread.positions.length) return;
     const nextIndexes = [...selectedDeckIndexes, index];
     setSelectedDeckIndexes(nextIndexes);
@@ -672,7 +723,13 @@ export default function Home() {
                   </p>
                   <div className="mt-5 border border-white/10 bg-black/20 p-3">
                     <div className="grid grid-cols-[74px_1fr] gap-3">
-                      {currentCard ? (
+                      {isCompatibilityMode || reading?.tarotless ? (
+                        <div className="grid aspect-[3/5] w-full place-items-center border border-cyan-200/30 bg-cyan-200/10 text-center text-xs font-semibold text-cyan-50">
+                          宿曜
+                          <br />
+                          相性
+                        </div>
+                      ) : currentCard ? (
                         <Image
                           src={currentCard.image}
                           alt={currentCard.jpName}
@@ -692,10 +749,16 @@ export default function Home() {
                       <div className="min-w-0">
                         <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/60">Current draw</p>
                         <p className="mt-2 text-lg font-semibold text-white">
-                          {currentCard ? currentCard.jpName : "未選択"}
+                          {isCompatibilityMode || reading?.tarotless
+                            ? "宿曜だけで相性を見る"
+                            : currentCard
+                              ? currentCard.jpName
+                              : "未選択"}
                         </p>
                         <p className="text-sm text-stone-400">
-                          {currentCard
+                          {isCompatibilityMode || reading?.tarotless
+                            ? "タロットカードは使わず、二人の宿から読みます"
+                            : currentCard
                             ? `${currentCard.name} / ${currentReversed ? "逆位置" : "正位置"}`
                             : "裏向きの22枚から1枚選んでください"}
                         </p>
@@ -707,14 +770,25 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={shuffleForRedraw}
-                    disabled={busy}
-                    className="mt-4 flex w-full items-center justify-center gap-2 border border-white/15 px-4 py-3 font-semibold text-white transition hover:border-cyan-200/70 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <Shuffle className="h-5 w-5" />
-                    {selectedDeckIndexes.length === 0 ? "シャッフルし直す" : "もう一度シャッフルして引き直す"}
-                  </button>
+                  {isCompatibilityMode ? (
+                    <button
+                      onClick={createCompatibilityReading}
+                      disabled={busy || !compatibilityForm.birthDate}
+                      className="mt-4 flex w-full items-center justify-center gap-2 border border-cyan-200/40 bg-cyan-200/10 px-4 py-3 font-semibold text-cyan-50 transition hover:border-cyan-100 hover:bg-cyan-100/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-stone-500"
+                    >
+                      <Sparkles className="h-5 w-5" />
+                      宿曜だけで相性を占う
+                    </button>
+                  ) : (
+                    <button
+                      onClick={shuffleForRedraw}
+                      disabled={busy}
+                      className="mt-4 flex w-full items-center justify-center gap-2 border border-white/15 px-4 py-3 font-semibold text-white transition hover:border-cyan-200/70 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <Shuffle className="h-5 w-5" />
+                      {selectedDeckIndexes.length === 0 ? "シャッフルし直す" : "もう一度シャッフルして引き直す"}
+                    </button>
+                  )}
                   {authMessage && <p className="mt-4 text-sm text-amber-100">{authMessage}</p>}
                 </div>
 
@@ -853,7 +927,7 @@ export default function Home() {
                             required
                           />
                           <p className="text-xs leading-5 text-stone-500">
-                            相性をオンにすると、あなたと相手の宿曜を合わせてスプレッドを読みます。
+                            相性はタロットを使わず、あなたと相手の宿曜だけで読みます。
                           </p>
                         </div>
                       )}
@@ -865,7 +939,26 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="border border-white/10 bg-white/[0.04] p-5">
+                {isCompatibilityMode ? (
+                  <div className="border border-cyan-200/20 bg-cyan-200/[0.05] p-5">
+                    <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Shukuyo compatibility</p>
+                    <h3 className="mt-2 text-xl font-semibold text-white">宿曜だけで相性を見る</h3>
+                    <p className="mt-3 text-sm leading-7 text-stone-300">
+                      相手の生年月日を入力したら、カードを選ばずに相性リーディングを生成できます。
+                      二人の宿のキャラクター、近づきやすい点、すれ違いやすい点を中心に読みます。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={createCompatibilityReading}
+                      disabled={busy || !compatibilityForm.birthDate}
+                      className="mt-5 inline-flex w-full items-center justify-center gap-2 border border-cyan-200/40 bg-cyan-200/10 px-4 py-3 font-semibold text-cyan-50 transition hover:border-cyan-100 hover:bg-cyan-100/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-stone-500"
+                    >
+                      <Sparkles className="h-5 w-5" />
+                      宿曜相性を出す
+                    </button>
+                  </div>
+                ) : (
+                  <div className="border border-white/10 bg-white/[0.04] p-5">
                   <div className="mb-4 flex items-end justify-between gap-3">
                     <div>
                       <p className="text-sm uppercase tracking-[0.22em] text-cyan-100/60">Major Arcana</p>
@@ -959,14 +1052,22 @@ export default function Home() {
                     })}
                   </div>
                 </div>
+                )}
 
                 {reading && (
                   <div ref={drawnCardRef} className="scroll-mt-5 border border-white/10 bg-[#0d1117] p-5">
                     <div>
                       <p className="text-sm text-cyan-100/70">
-                        {(reading.draws?.length ?? 1) > 1 ? "Drawn cards" : "Drawn card"}
+                        {reading.tarotless ? "Shukuyo compatibility" : (reading.draws?.length ?? 1) > 1 ? "Drawn cards" : "Drawn card"}
                       </p>
-                      {(reading.draws?.length ?? 0) > 1 ? (
+                      {reading.tarotless ? (
+                        <div className="mt-4 border border-cyan-200/20 bg-cyan-200/[0.05] p-4">
+                          <p className="text-lg font-semibold text-white">宿曜だけの相性リーディング</p>
+                          <p className="mt-2 text-sm leading-6 text-stone-300">
+                            タロットカードは使わず、二人の宿曜とキャッチー名称から相性を読みます。
+                          </p>
+                        </div>
+                      ) : (reading.draws?.length ?? 0) > 1 ? (
                         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
                           {reading.draws?.map((draw, index) => {
                             const card = majorArcana[draw.cardId] ?? majorArcana[0];
@@ -1013,6 +1114,7 @@ export default function Home() {
                           <p className="mt-1 text-lg text-white">
                             {reading.shuku.name}宿 <span className="text-stone-400">({reading.shuku.reading})</span>
                           </p>
+                          <p className="mt-1 text-sm text-cyan-100/70">{reading.shuku.catchyName}</p>
                         </div>
                     </div>
                   </div>
@@ -1023,7 +1125,9 @@ export default function Home() {
                 <div className="overflow-auto p-5 md:p-7">
                   {reading ? (
                     <article className="prose prose-invert max-w-none prose-p:leading-8">
-                      <h2 className="mb-6 text-3xl font-semibold text-white">今日の占い結果</h2>
+                      <h2 className="mb-6 text-3xl font-semibold text-white">
+                        {reading.tarotless ? "宿曜相性の結果" : activeSpread.id === "one-oracle" ? "今日の占い結果" : `${activeSpread.name}の結果`}
+                      </h2>
                       <div className="whitespace-pre-wrap text-stone-200">{reading.reading}</div>
                       {user && (
                         <div className="not-prose mt-8 border border-white/10 bg-black/20 p-4">
