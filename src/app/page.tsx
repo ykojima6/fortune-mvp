@@ -9,11 +9,13 @@ import {
   Mail,
   MessageCircle,
   Moon,
+  Pencil,
   Save,
   Shuffle,
   Sparkles,
   Trash2,
   User,
+  X,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -209,6 +211,7 @@ export default function Home() {
     birthDate: "",
     gender: "" as "" | Gender,
   });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -251,6 +254,7 @@ export default function Home() {
       if (!session?.user) {
         setProfile(null);
         setHistory([]);
+        setIsEditingProfile(false);
       }
     });
 
@@ -366,6 +370,7 @@ export default function Home() {
       });
       await loadProfile(user.id);
       resetDrawState();
+      setIsEditingProfile(false);
       setAuthMessage("登録情報を更新しました。");
     } catch (error) {
       setAuthMessage(error instanceof Error ? error.message : "登録情報の更新に失敗しました。");
@@ -704,6 +709,30 @@ export default function Home() {
     scrollToDrawnCardOnMobile();
   }
 
+  function startProfileEdit() {
+    if (profile) {
+      setProfileForm({
+        name: profile.name,
+        birthDate: profile.birth_date,
+        gender: profile.gender ?? "",
+      });
+    }
+    setAuthMessage("");
+    setIsEditingProfile(true);
+  }
+
+  function cancelProfileEdit() {
+    if (profile) {
+      setProfileForm({
+        name: profile.name,
+        birthDate: profile.birth_date,
+        gender: profile.gender ?? "",
+      });
+    }
+    setIsEditingProfile(false);
+    setAuthMessage("");
+  }
+
   function scrollToDrawnCardOnMobile() {
     if (!window.matchMedia("(max-width: 1023px)").matches) return;
     window.setTimeout(() => {
@@ -871,12 +900,39 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                  {user && (
+                  {user && !isEditingProfile && (
+                    <button
+                      type="button"
+                      onClick={startProfileEdit}
+                      className="mt-4 flex w-full items-center justify-center gap-2 border border-white/15 px-4 py-3 font-semibold text-white transition hover:border-cyan-200/70 hover:text-cyan-100"
+                    >
+                      <Pencil className="h-5 w-5" />
+                      登録情報を編集
+                    </button>
+                  )}
+                  {user && isEditingProfile && (
                     <form onSubmit={updateProfile} className="mt-4 border border-white/10 bg-black/20 p-4">
-                      <div className="mb-4">
-                        <p className="text-sm font-semibold text-white">登録情報を編集</p>
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">登録情報を編集</p>
+                          <p className="mt-1 text-xs leading-5 text-stone-500">
+                            ここで変更した内容は、次の占い結果から反映されます。
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={cancelProfileEdit}
+                          disabled={profileBusy}
+                          className="grid h-9 w-9 shrink-0 place-items-center border border-white/10 text-stone-400 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50"
+                          aria-label="編集を閉じる"
+                          title="編集を閉じる"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="mb-4 border border-cyan-200/15 bg-cyan-200/[0.04] p-3">
                         <p className="mt-1 text-xs leading-5 text-stone-500">
-                          ここで変更した内容は、次の占い結果から反映されます。
+                          現在: {activeName} / {activeBirthDate ?? "生年月日未登録"} / {formatGender(activeGender)}
                         </p>
                       </div>
                       <div className="grid gap-3">
@@ -901,14 +957,24 @@ export default function Home() {
                           onChange={(gender) => setProfileForm({ ...profileForm, gender })}
                         />
                       </div>
-                      <button
-                        type="submit"
-                        disabled={profileBusy || !profileForm.name || !profileForm.birthDate || !profileForm.gender}
-                        className="mt-4 flex w-full items-center justify-center gap-2 border border-cyan-200/40 px-4 py-3 font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
-                      >
-                        <Save className="h-5 w-5" />
-                        {profileBusy ? "更新中" : "登録情報を保存"}
-                      </button>
+                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={cancelProfileEdit}
+                          disabled={profileBusy}
+                          className="flex items-center justify-center gap-2 border border-white/15 px-4 py-3 font-semibold text-stone-200 transition hover:border-white/40 hover:text-white disabled:cursor-wait disabled:opacity-50"
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={profileBusy || !profileForm.name || !profileForm.birthDate || !profileForm.gender}
+                          className="flex items-center justify-center gap-2 border border-cyan-200/40 px-4 py-3 font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
+                        >
+                          <Save className="h-5 w-5" />
+                          {profileBusy ? "更新中" : "保存"}
+                        </button>
+                      </div>
                     </form>
                   )}
                   {isCompatibilityMode ? (
