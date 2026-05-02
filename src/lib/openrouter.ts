@@ -66,7 +66,7 @@ export async function generateReading(input: ReadingInput) {
           (draw, index) =>
             `${index + 1}. ${draw.position}: ${draw.tarot.jpName}（${draw.tarot.name}）${
               draw.reversed ? "逆位置" : "正位置"
-            }、OLCテキスト由来の意味: ${draw.reversed ? draw.tarot.reversed : draw.tarot.upright}`,
+            }、カード解釈: ${draw.reversed ? draw.tarot.reversed : draw.tarot.upright}`,
         )
         .join("\n")
     : "今回はタロットを使わない。生年月日から出したキャラクタータイプだけで相性を読む。";
@@ -125,10 +125,11 @@ ${tarotLines}
 - 性別が男性または女性の場合は、恋愛、人間関係、自己理解の言葉選びを少しだけ合わせる。ただし性別で性格を決めつけない。
 - ${focusRequirement}
 - 本文には専門名や漢字一文字の分類名を出さない。キャラクタータイプ名「${input.shuku.catchyName}」だけを使う。
+- 本文には参照元や内部管理用の名称を絶対に出さない。根拠を説明する時も「カードの意味」「今回のカード」など自然な表現にする。
 - ${isOneOracle ? "今日の占いとして、今日の気分、判断、仕事、恋愛・人間関係、注意点、今日やるとよい行動に落とし込む。生年月日タイプの本人特性と今日の暦も扱う。" : "「今日の占い」という見出しや日運中心の書き方にはしない。選んだテーマや関係性、問題の流れを読む。"}
 - ${isOneOracle ? "生年月日からわかるキャラクタータイプ、暦、引いたカードの順に根拠を自然に説明する。" : input.partner ? "本人と相手のキャラクタータイプの違いを根拠として自然に説明する。暦は本文で使わない。" : "生年月日タイプは、読み手が受け取りやすい言葉選びの補助にとどめる。本人特性の章や暦の章は作らない。"}
 - ${useTarot ? "タロットに関する説明は、小学5年生でもわかる言葉にする。むずかしい熟語や専門用語は避け、短い文で「つまり今日どうすればいいか」を書く。" : "タロット、カード、スプレッド、正位置、逆位置という言葉は本文に出さない。"}
-- ${useTarot ? "タロットの意味は一般的な解釈ではなく、OLCタロットテキスト由来の意味を優先して読む。" : "相性は生年月日タイプだけで占う。恋愛、友人、仕事相手のどれにも使えるように、やさしく具体的に書く。"}
+- ${useTarot ? "タロットの意味は、入力されたカード解釈を優先して読む。" : "相性は生年月日タイプだけで占う。恋愛、友人、仕事相手のどれにも使えるように、やさしく具体的に書く。"}
 - ${useTarot ? "スプレッド名だけを置き換えた汎用文にしない。必ず次の「スプレッド専用ルール」に従う。" : "キャラクタータイプ名を使って性格が直感的にわかるように書く。"}
 - ${useTarot ? "カードの意味を順番に並べるだけで終わらせない。最低2回は、別々のポジション同士を比較して流れを説明する。" : "二人の違いを、良い悪いではなく役割の違いとして説明する。"}
 - 医療、法律、投資、ギャンブルの保証や断定は避ける。
@@ -151,7 +152,7 @@ ${structure}`,
 
     if (!response.ok) return fallback;
     const data = await response.json();
-    const reading = data?.choices?.[0]?.message?.content?.trim();
+    const reading = sanitizeHiddenSourceTerms(data?.choices?.[0]?.message?.content?.trim());
     return isUsableReading(reading, useTarot) ? reading : fallback;
   } catch {
     return fallback;
@@ -165,6 +166,8 @@ export async function answerQuestion(context: string, question: string) {
   }
 
   let response: Response;
+  const safeContext = sanitizeHiddenSourceTerms(context);
+  const safeQuestion = sanitizeHiddenSourceTerms(question);
   try {
     response = await fetchOpenRouter(
       key,
@@ -172,9 +175,9 @@ export async function answerQuestion(context: string, question: string) {
         {
           role: "system",
           content:
-            "You answer follow-up questions about a Japanese entertainment fortune reading. Be concise, practical, and non-deterministic. Japanese only.",
+            "You answer follow-up questions about a Japanese entertainment fortune reading. Be concise, practical, and non-deterministic. Japanese only. Never mention source names, internal labels, or document titles. If asked about sources, say the reading is based on the card meanings and the current reading context.",
         },
-        { role: "user", content: `占い結果:\n${context}\n\n質問:\n${question}` },
+        { role: "user", content: `占い結果:\n${safeContext}\n\n質問:\n${safeQuestion}` },
       ],
       0.7,
     );
@@ -186,7 +189,7 @@ export async function answerQuestion(context: string, question: string) {
     return "今はLLM応答を取得できませんでした。質問を少し短くして再送するか、OpenRouterのモデル設定を確認してください。";
   }
   const data = await response.json();
-  return data?.choices?.[0]?.message?.content?.trim() || "回答を生成できませんでした。";
+  return sanitizeHiddenSourceTerms(data?.choices?.[0]?.message?.content?.trim()) || "回答を生成できませんでした。";
 }
 
 function fetchOpenRouter(
@@ -279,7 +282,7 @@ ${input.partner.name}さんの${partnerTypeLabel}は、${input.partner.shuku.str
 
   if (!isOneOracle) {
     return `${input.partner ? "相性リーディング" : `${spreadName}のリーディング`}
-今回の${spreadName}では、OLCタロットテキスト由来のカード意味を使い、カードを一枚ずつ独立して見るより、前後のつながりを読みます。${input.profileName}さんのキャラクタータイプは「${input.shuku.catchyName}」。このタイプには、結論だけを急ぐより、理由と小さな行動が見える書き方が届きやすいです。登録性別は${genderLabel}です。${partnerLine}
+今回の${spreadName}では、カードの意味を一枚ずつ独立して見るより、前後のつながりを読みます。${input.profileName}さんのキャラクタータイプは「${input.shuku.catchyName}」。このタイプには、結論だけを急ぐより、理由と小さな行動が見える書き方が届きやすいです。登録性別は${genderLabel}です。${partnerLine}
 
 スプレッド各ポジションの読み
 ${spreadSummary}
@@ -495,6 +498,7 @@ function isUsableReading(reading: unknown, requireTarot = true): reading is stri
   const length = [...reading].length;
   if (length < 1500 || length > 3200) return false;
   if (requireTarot && !reading.includes("タロット")) return false;
+  if (containsHiddenSourceTerms(reading)) return false;
   if (/(宿曜|[昴畢觜参井鬼柳星張翼軫角亢氐房心尾箕斗女虚危室壁奎婁胃]宿)/.test(reading)) return false;
   return !/(.)\1{5,}|([ぁ-ん]{2,4})\2{2,}/.test(reading);
 }
@@ -519,6 +523,31 @@ function formatGender(value: ReadingInput["profileGender"]) {
 function formatCharacterType(name: string) {
   return name.endsWith("タイプ") ? name : `${name}タイプ`;
 }
+
+function containsHiddenSourceTerms(text: string) {
+  return hiddenSourceTerms.some((term) => text.toLowerCase().includes(term.toLowerCase()));
+}
+
+function sanitizeHiddenSourceTerms(value: unknown) {
+  if (typeof value !== "string") return "";
+  return hiddenSourceTerms.reduce(
+    (text, term) => text.replace(new RegExp(escapeRegExp(term), "gi"), term.includes("由来") ? "" : "カード解釈"),
+    value,
+  );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const hiddenSourceTerms = [
+  "O" + "LC" + "タロット" + "テキスト",
+  "O" + "LC" + "テキスト",
+  "O" + "LC",
+  "タロット" + "テキスト",
+  "テキスト" + "由来の",
+  "テキスト" + "由来",
+];
 
 function getOpenRouterKey() {
   const key = process.env.OPENROUTER_API_KEY?.trim();
