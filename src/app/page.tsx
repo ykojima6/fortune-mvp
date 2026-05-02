@@ -87,6 +87,13 @@ type TarotDraw = TarotSelection & {
   position: string;
 };
 
+type SpreadSlot = {
+  column: number;
+  row: number;
+  columnSpan?: number;
+  rotate?: boolean;
+};
+
 type DeckCard = TarotSelection & {
   deckKey: string;
 };
@@ -1202,27 +1209,7 @@ export default function Home() {
                           </p>
                         </div>
                       ) : (reading.draws?.length ?? 0) > 1 ? (
-                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
-                          {reading.draws?.map((draw, index) => {
-                            const card = majorArcana[draw.cardId] ?? majorArcana[0];
-                            return (
-                              <div key={`${draw.position}-${index}`} className="border border-white/10 bg-black/20 p-2">
-                                <Image
-                                  src={card.image}
-                                  alt={card.jpName}
-                                  width={180}
-                                  height={300}
-                                  className={`aspect-[3/5] w-full object-cover ${draw.reversed ? "rotate-180" : ""}`}
-                                />
-                                <p className="mt-2 text-xs text-cyan-100/60">
-                                  {index + 1}. {draw.position}
-                                </p>
-                                <p className="mt-1 truncate text-sm font-semibold text-white">{card.jpName}</p>
-                                <p className="text-xs text-stone-400">{draw.reversed ? "逆位置" : "正位置"}</p>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <SpreadCardsLayout draws={reading.draws ?? []} spread={resolveSpreadFromDraws(reading.draws ?? []) ?? activeSpread} />
                       ) : (
                         <div className="mt-4 grid grid-cols-[120px_1fr] gap-4">
                           <Image
@@ -1444,6 +1431,185 @@ function LoadingPulse({
       <span>{label}</span>
     </div>
   );
+}
+
+function SpreadCardsLayout({ draws, spread }: { draws: TarotDraw[]; spread: Spread }) {
+  const layout = getSpreadLayout(spread.id, draws.length);
+
+  return (
+    <div className="mt-4 overflow-x-auto pb-1">
+      <div
+        className="grid gap-3"
+        style={{
+          minWidth: `${layout.columns * 88}px`,
+          gridTemplateColumns: `repeat(${layout.columns}, minmax(76px, 1fr))`,
+          gridTemplateRows: `repeat(${layout.rows}, auto)`,
+        }}
+      >
+        {draws.map((draw, index) => {
+          const card = majorArcana[draw.cardId] ?? majorArcana[0];
+          const slot = layout.slots[index] ?? getFallbackSlot(index, layout.columns);
+          return (
+            <div
+              key={`${draw.position}-${index}`}
+              className={`relative border border-white/10 bg-black/20 p-2 ${
+                slot.rotate ? "z-10 shadow-[0_0_24px_rgba(103,232,249,0.18)]" : ""
+              }`}
+              style={{
+                gridColumn: `${slot.column} / span ${slot.columnSpan ?? 1}`,
+                gridRow: slot.row,
+                transform: slot.rotate ? "rotate(90deg) scale(0.9)" : undefined,
+              }}
+            >
+              <Image
+                src={card.image}
+                alt={card.jpName}
+                width={180}
+                height={300}
+                className={`aspect-[3/5] w-full object-cover ${draw.reversed ? "rotate-180" : ""}`}
+              />
+              <p className="mt-2 text-xs text-cyan-100/60">
+                {index + 1}. {draw.position}
+              </p>
+              <p className="mt-1 truncate text-sm font-semibold text-white">{card.jpName}</p>
+              <p className="text-xs text-stone-400">{draw.reversed ? "逆位置" : "正位置"}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function resolveSpreadFromDraws(draws: TarotDraw[]) {
+  return spreads.find(
+    (spread) =>
+      spread.positions.length === draws.length &&
+      spread.positions.every((position, index) => position === draws[index]?.position),
+  );
+}
+
+function getSpreadLayout(spreadId: SpreadId, count: number): { columns: number; rows: number; slots: SpreadSlot[] } {
+  if (spreadId === "two-oracle") {
+    return {
+      columns: 2,
+      rows: 1,
+      slots: [
+        { column: 1, row: 1 },
+        { column: 2, row: 1 },
+      ],
+    };
+  }
+
+  if (spreadId === "three-card") {
+    return {
+      columns: 3,
+      rows: 1,
+      slots: [
+        { column: 1, row: 1 },
+        { column: 2, row: 1 },
+        { column: 3, row: 1 },
+      ],
+    };
+  }
+
+  if (spreadId === "greek-cross") {
+    return {
+      columns: 3,
+      rows: 3,
+      slots: [
+        { column: 2, row: 2 },
+        { column: 2, row: 1 },
+        { column: 1, row: 2 },
+        { column: 3, row: 2 },
+        { column: 2, row: 3 },
+      ],
+    };
+  }
+
+  if (spreadId === "hexagram") {
+    return {
+      columns: 3,
+      rows: 4,
+      slots: [
+        { column: 2, row: 1 },
+        { column: 1, row: 2 },
+        { column: 3, row: 2 },
+        { column: 1, row: 3 },
+        { column: 3, row: 3 },
+        { column: 2, row: 4 },
+        { column: 2, row: 2 },
+      ],
+    };
+  }
+
+  if (spreadId === "celtic-cross") {
+    return {
+      columns: 5,
+      rows: 4,
+      slots: [
+        { column: 2, row: 2 },
+        { column: 2, row: 2, rotate: true },
+        { column: 2, row: 1 },
+        { column: 2, row: 3 },
+        { column: 1, row: 2 },
+        { column: 3, row: 2 },
+        { column: 5, row: 4 },
+        { column: 5, row: 3 },
+        { column: 5, row: 2 },
+        { column: 5, row: 1 },
+      ],
+    };
+  }
+
+  if (spreadId === "choice") {
+    return {
+      columns: 5,
+      rows: 3,
+      slots: [
+        { column: 3, row: 2 },
+        { column: 2, row: 1 },
+        { column: 1, row: 1 },
+        { column: 4, row: 3 },
+        { column: 5, row: 3 },
+      ],
+    };
+  }
+
+  if (spreadId === "horoscope") {
+    return {
+      columns: 5,
+      rows: 5,
+      slots: [
+        { column: 3, row: 3 },
+        { column: 3, row: 1 },
+        { column: 4, row: 1 },
+        { column: 5, row: 2 },
+        { column: 5, row: 3 },
+        { column: 5, row: 4 },
+        { column: 4, row: 5 },
+        { column: 3, row: 5 },
+        { column: 2, row: 5 },
+        { column: 1, row: 4 },
+        { column: 1, row: 3 },
+        { column: 1, row: 2 },
+        { column: 2, row: 1 },
+      ],
+    };
+  }
+
+  return {
+    columns: Math.min(Math.max(count, 1), 4),
+    rows: Math.ceil(count / 4),
+    slots: Array.from({ length: count }, (_, index) => getFallbackSlot(index, Math.min(Math.max(count, 1), 4))),
+  };
+}
+
+function getFallbackSlot(index: number, columns: number): SpreadSlot {
+  return {
+    column: (index % columns) + 1,
+    row: Math.floor(index / columns) + 1,
+  };
 }
 
 function AuthPanel({
