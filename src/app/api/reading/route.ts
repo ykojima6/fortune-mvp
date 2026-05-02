@@ -8,6 +8,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const name = String(body.name || "").trim();
   const birthDate = String(body.birthDate || "").trim();
+  const gender = parseGender(body.gender);
   const partner = parsePartner(body.partner);
   const userId = await getAuthenticatedUserId(request);
 
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
   }
   const readingInput = {
     profileName: name,
+    profileGender: gender,
     birthDate,
     shuku,
     calendar,
@@ -50,6 +52,10 @@ export async function POST(request: Request) {
   const reading = await withTimeout(generateReading(readingInput), 33000, generateLocalReading(readingInput));
 
   return NextResponse.json({ id: null, shuku, tarot: card, reversed, tarotless, calendar, reading });
+}
+
+function parseGender(value: unknown): "male" | "female" | "other" | null {
+  return value === "male" || value === "female" || value === "other" ? value : null;
 }
 
 async function loadCalendarDay(date: string) {

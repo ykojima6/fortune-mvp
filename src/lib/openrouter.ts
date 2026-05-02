@@ -13,6 +13,7 @@ type CalendarInfo = {
 
 type ReadingInput = {
   profileName: string;
+  profileGender?: "male" | "female" | "other" | null;
   birthDate: string;
   shuku: Shuku;
   calendar: CalendarInfo;
@@ -51,6 +52,7 @@ export async function generateReading(input: ReadingInput) {
   if (!key) return fallback;
   const today = getJapanTodayLabel();
   const spreadName = input.spreadName || "ワンオラクル";
+  const genderLabel = formatGender(input.profileGender);
   const useTarot = !input.tarotless;
   const draws =
     useTarot && input.tarotDraws && input.tarotDraws.length > 0
@@ -111,6 +113,7 @@ export async function generateReading(input: ReadingInput) {
           role: "user",
           content: `次の情報から「${requestTitle}」として、${useTarot ? "宿曜、暦、タロットスプレッドを統合した" : "宿曜と暦だけを使った"}占い結果を作成してください。
 名前: ${input.profileName}
+性別: ${genderLabel}
 生年月日: ${input.birthDate}
 今日: ${today}
 宿曜: ${input.shuku.name}宿（${input.shuku.reading}）、キャッチー名称: ${input.shuku.catchyName}、テーマ: ${input.shuku.theme}、強み: ${input.shuku.strength}、注意: ${input.shuku.caution}
@@ -123,6 +126,7 @@ ${tarotLines}
 要件:
 - 日本語で${lengthRequirement}に収める。
 - 占いはエンタメとして断定しすぎず、それでも具体的に。
+- 性別が男性または女性の場合は、恋愛、人間関係、自己理解の言葉選びを少しだけ合わせる。ただし性別で性格を決めつけない。
 - ${focusRequirement}
 - 宿曜だけで読む本人特性の章を必ず入れる。この章ではタロットに触れない。
 - ${isOneOracle ? "今日の占いとして、今日の気分、判断、仕事、恋愛・人間関係、注意点、今日やるとよい行動に落とし込む。" : "「今日の占い」という見出しや日運中心の書き方にはしない。選んだテーマや関係性、問題の流れを読む。"}
@@ -228,6 +232,7 @@ export function generateLocalReading(input: ReadingInput) {
   const tarotMeaning = input.reversed ? input.tarot.reversed : input.tarot.upright;
   const today = getJapanTodayLabel();
   const spreadName = input.spreadName || "ワンオラクル";
+  const genderLabel = formatGender(input.profileGender);
   const useTarot = !input.tarotless;
   const draws =
     useTarot && input.tarotDraws && input.tarotDraws.length > 0
@@ -254,7 +259,7 @@ export function generateLocalReading(input: ReadingInput) {
 
   if (input.partner && !useTarot) {
     return `宿曜だけで見る相性リーディング
-${input.profileName}さんは${input.shuku.name}宿、わかりやすく言うと「${input.shuku.catchyName}」です。テーマは「${input.shuku.theme}」。${input.partner.name}さんは${input.partner.shuku.name}宿で、「${input.partner.shuku.catchyName}」タイプです。暦ではあなた側に${calendarLine}が重なっているため、今は相手との距離感を感覚だけで決めるより、言葉にして整えるほど関係が安定します。${partnerLine}
+${input.profileName}さんは${input.shuku.name}宿、わかりやすく言うと「${input.shuku.catchyName}」です。登録性別は${genderLabel}です。テーマは「${input.shuku.theme}」。${input.partner.name}さんは${input.partner.shuku.name}宿で、「${input.partner.shuku.catchyName}」タイプです。暦ではあなた側に${calendarLine}が重なっているため、今は相手との距離感を感覚だけで決めるより、言葉にして整えるほど関係が安定します。${partnerLine}
 
 あなたの宿とキャッチー名称
 ${input.shuku.catchyName}タイプのあなたは、${input.shuku.strength}ことが自然にできます。人に合わせているように見えても、内側には「ここは大事にしたい」という基準があります。注意点は「${input.shuku.caution}」。好きな相手や大事な相手ほど、期待が高くなり、言わなくてもわかってほしい気持ちが出やすいところがあります。
@@ -276,7 +281,7 @@ ${input.partner.name}さんの${input.partner.shuku.catchyName}タイプは、${
 
   if (!isOneOracle) {
     return `${input.partner ? "相性リーディング" : `${spreadName}のリーディング`}
-${input.profileName}さんの宿曜は${input.shuku.name}宿、キャッチー名称は「${input.shuku.catchyName}」です。これは「${input.shuku.theme}」を核に持つ宿で、物事を見る時に自分なりの基準を大切にします。暦では${calendarLine}が重なっているため、今のテーマは勢いだけで進めるより、関係や状況の細部を見直すことにあります。今回の${spreadName}では、OLCタロットテキスト由来のカード意味を使い、カードを一枚ずつ独立して見るより、前後のつながりを読むことが大切です。${partnerLine}
+${input.profileName}さんの宿曜は${input.shuku.name}宿、キャッチー名称は「${input.shuku.catchyName}」です。登録性別は${genderLabel}です。これは「${input.shuku.theme}」を核に持つ宿で、物事を見る時に自分なりの基準を大切にします。暦では${calendarLine}が重なっているため、今のテーマは勢いだけで進めるより、関係や状況の細部を見直すことにあります。今回の${spreadName}では、OLCタロットテキスト由来のカード意味を使い、カードを一枚ずつ独立して見るより、前後のつながりを読むことが大切です。${partnerLine}
 
 宿曜だけで見るあなたの基本特性
 ${input.shuku.catchyName}タイプの人は、表面的には落ち着いて見えても、内側にはかなりはっきりした美学や判断基準を持っています。人から強く言われたから動くというより、自分の中で納得できた瞬間に一気に集中力が出るタイプです。強みは${input.shuku.strength}こと。注意点は「${input.shuku.caution}」です。自分の感覚が鋭いぶん、納得できない相手や雑な進め方に対して、心の中で距離を置きやすいところがあります。
@@ -297,7 +302,7 @@ ${spreadSpec.purpose} ${spreadSpec.positionRule} そのため、中心になる$
   }
 
   return `今日の占い
-${today}の${input.profileName}さんは、外へ勢いよく出るよりも、自分の中にある判断基準を整えるほど運が開きます。生年月日から見る宿曜は${input.shuku.name}宿、キャッチー名称は「${input.shuku.catchyName}」。これは「${input.shuku.theme}」を核に持つ宿で、今日の流れでは、周囲に合わせるだけではなく「自分は本当は何を大事にしたいのか」を確認することが大切です。暦では${calendarLine}が重なっているため、気分は少し繊細になりやすく、普段なら流せる一言や小さな予定変更にも反応しやすい日です。ただし、それは悪いことではありません。細かな違和感に気づけるぶん、早めに軌道修正できる日でもあります。
+${today}の${input.profileName}さんは、外へ勢いよく出るよりも、自分の中にある判断基準を整えるほど運が開きます。登録性別は${genderLabel}です。生年月日から見る宿曜は${input.shuku.name}宿、キャッチー名称は「${input.shuku.catchyName}」。これは「${input.shuku.theme}」を核に持つ宿で、今日の流れでは、周囲に合わせるだけではなく「自分は本当は何を大事にしたいのか」を確認することが大切です。暦では${calendarLine}が重なっているため、気分は少し繊細になりやすく、普段なら流せる一言や小さな予定変更にも反応しやすい日です。ただし、それは悪いことではありません。細かな違和感に気づけるぶん、早めに軌道修正できる日でもあります。
 
 宿曜だけで見るあなたの基本特性
 ${input.shuku.catchyName}タイプの人は、表面的には落ち着いて見えても、内側にはかなりはっきりした美学や判断基準を持っています。人から強く言われたから動くというより、自分の中で納得できた瞬間に一気に集中力が出るタイプです。強みは${input.shuku.strength}こと。派手な勢いで目立つより、積み重ねた経験や観察から「これはこうした方がいい」と見抜く力があります。周囲がまだ雰囲気で話している段階でも、あなたは細部の矛盾、相手の本音、物事の弱い部分に先に気づいていることが多いはずです。
@@ -500,6 +505,13 @@ function getJapanTodayLabel() {
     day: "numeric",
     weekday: "long",
   }).format(new Date());
+}
+
+function formatGender(value: ReadingInput["profileGender"]) {
+  if (value === "male") return "男性";
+  if (value === "female") return "女性";
+  if (value === "other") return "その他";
+  return "未設定";
 }
 
 function getOpenRouterKey() {

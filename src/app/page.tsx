@@ -21,6 +21,7 @@ import { majorArcana, tarotBackImage, type TarotCard } from "@/lib/tarot";
 import { shukuList, type Shuku } from "@/lib/shukuyo";
 
 type Mode = "signin" | "signup" | "reset-request" | "reset-update";
+type Gender = "male" | "female" | "other";
 
 type ReadingResult = {
   id: string | null;
@@ -45,6 +46,7 @@ type Profile = {
   id: string;
   name: string;
   birth_date: string;
+  gender?: Gender | null;
   email: string;
 };
 
@@ -186,6 +188,7 @@ export default function Home() {
   const [authForm, setAuthForm] = useState({
     name: "",
     birthDate: "",
+    gender: "" as "" | Gender,
     email: "",
     password: "",
   });
@@ -263,15 +266,34 @@ export default function Home() {
   const currentReversed = reading?.tarotless ? false : (reading?.reversed ?? revealedSelection?.reversed ?? false);
   const activeName = profile?.name || guestProfile?.name || authForm.name || "あなた";
   const activeBirthDate = profile?.birth_date || guestProfile?.birth_date || authForm.birthDate;
+  const activeGender = profile?.gender || authForm.gender || null;
 
   async function loadProfile(userId: string) {
     if (!supabase) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,name,birth_date,gender,email")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!error) {
+      setProfile(data);
+      return;
+    }
+
+    const { data: fallbackData } = await supabase
       .from("profiles")
       .select("id,name,birth_date,email")
       .eq("id", userId)
       .maybeSingle();
-    setProfile(data);
+    const { data: userData } = await supabase.auth.getUser();
+    setProfile(
+      fallbackData
+        ? {
+            ...fallbackData,
+            gender: parseGender(userData.user?.user_metadata?.gender),
+          }
+        : null,
+    );
   }
 
   async function loadHistory(userId: string) {
@@ -310,21 +332,32 @@ export default function Home() {
         setIsPasswordRecovery(false);
         setAuthMessage("パスワードを更新しました。");
       } else if (mode === "signup") {
+        if (!authForm.gender) {
+          setAuthMessage("性別を選択してください。");
+          return;
+        }
         const { data, error } = await supabase.auth.signUp({
           email: authForm.email,
           password: authForm.password,
           options: {
-            data: { name: authForm.name, birth_date: authForm.birthDate },
+            data: { name: authForm.name, birth_date: authForm.birthDate, gender: authForm.gender },
           },
         });
         if (error) throw error;
         if (data.user) {
-          await supabase.from("profiles").upsert({
+          const profilePayload = {
             id: data.user.id,
             name: authForm.name,
             birth_date: authForm.birthDate,
+            gender: authForm.gender,
             email: authForm.email,
-          });
+          };
+          const { error: profileError } = await supabase.from("profiles").upsert(profilePayload);
+          if (profileError) {
+            const { gender, ...fallbackProfilePayload } = profilePayload;
+            void gender;
+            await supabase.from("profiles").upsert(fallbackProfilePayload);
+          }
           await loadProfile(data.user.id);
         }
         setAuthMessage("登録しました。メール確認が有効な場合は受信メールを確認してください。");
@@ -367,6 +400,7 @@ export default function Home() {
         body: JSON.stringify({
           name: activeName,
           birthDate: activeBirthDate,
+          gender: activeGender,
           tarotCardId: firstDraw.cardId,
           tarotReversed: firstDraw.reversed,
           spreadId: activeSpread.id,
@@ -420,6 +454,7 @@ export default function Home() {
         body: JSON.stringify({
           name: activeName,
           birthDate: activeBirthDate,
+          gender: activeGender,
           spreadId: "compatibility-shukuyo",
           spreadName: "宿曜相性",
           tarotDraws: [],
@@ -719,6 +754,7 @@ export default function Home() {
                   </h2>
                   <p className="mt-2 text-stone-400">
                     {activeBirthDate ?? "生年月日未登録"}
+                    {user && <span className="ml-2 text-cyan-100/60">{formatGender(activeGender)}</span>}
                     {isGuest && <span className="ml-2 text-cyan-100/60">体験モード</span>}
                   </p>
                   <div className="mt-5 border border-white/10 bg-black/20 p-3">
@@ -1258,6 +1294,17 @@ function formatHistoryDate(value: string) {
   }).format(new Date(value));
 }
 
+function parseGender(value: unknown): Gender | null {
+  return value === "male" || value === "female" || value === "other" ? value : null;
+}
+
+function formatGender(value: Gender | null | undefined) {
+  if (value === "male") return "男性";
+  if (value === "female") return "女性";
+  if (value === "other") return "その他";
+  return "未設定";
+}
+
 function ReadingLoading() {
   return (
     <div className="w-full max-w-lg px-4">
@@ -1314,8 +1361,8 @@ function AuthPanel({
 }: {
   mode: Mode;
   setMode: (mode: Mode) => void;
-  form: { name: string; birthDate: string; email: string; password: string };
-  setForm: (form: { name: string; birthDate: string; email: string; password: string }) => void;
+  form: { name: string; birthDate: string; gender: "" | Gender; email: string; password: string };
+  setForm: (form: { name: string; birthDate: string; gender: "" | Gender; email: string; password: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onStartGuest: (name: string, birthDate: string) => void;
   isPasswordRecovery: boolean;
@@ -1386,6 +1433,7 @@ function AuthPanel({
                 onChange={(value) => setForm({ ...form, birthDate: value })}
                 required
               />
+              <GenderSelect value={form.gender} onChange={(gender) => setForm({ ...form, gender })} />
             </>
           )}
           {!isResetUpdate && (
@@ -1496,6 +1544,43 @@ function AuthPanel({
         )}
       </div>
     </section>
+  );
+}
+
+function GenderSelect({
+  value,
+  onChange,
+}: {
+  value: "" | Gender;
+  onChange: (value: Gender) => void;
+}) {
+  const options: Array<{ value: Gender; label: string }> = [
+    { value: "female", label: "女性" },
+    { value: "male", label: "男性" },
+    { value: "other", label: "その他" },
+  ];
+
+  return (
+    <div>
+      <p className="mb-2 text-sm text-stone-300">性別</p>
+      <div className="grid grid-cols-3 gap-2">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`border px-3 py-3 text-sm font-semibold transition ${
+              value === option.value
+                ? "border-cyan-100 bg-cyan-100 text-black"
+                : "border-white/10 bg-black/20 text-stone-300 hover:border-cyan-100/60 hover:text-white"
+            }`}
+            aria-pressed={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

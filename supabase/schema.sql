@@ -4,10 +4,28 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   name text not null,
   birth_date date not null,
+  gender text not null default 'other' check (gender in ('male', 'female', 'other')),
   email text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists gender text not null default 'other';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'profiles_gender_check'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_gender_check check (gender in ('male', 'female', 'other'));
+  end if;
+end;
+$$;
 
 create table if not exists public.calendar_days (
   solar_date date primary key,
@@ -49,16 +67,18 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, name, birth_date, email)
+  insert into public.profiles (id, name, birth_date, gender, email)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'name', '未設定'),
     coalesce(nullif(new.raw_user_meta_data ->> 'birth_date', '')::date, current_date),
+    coalesce(nullif(new.raw_user_meta_data ->> 'gender', ''), 'other'),
     coalesce(new.email, '')
   )
   on conflict (id) do update set
     name = excluded.name,
     birth_date = excluded.birth_date,
+    gender = excluded.gender,
     email = excluded.email,
     updated_at = now();
   return new;
