@@ -176,7 +176,7 @@ const memberFeatures = [
   },
   {
     title: "相性リーディング",
-    description: "相手の生年月日を入れて、宿曜とタロットで相性を読めます。",
+    description: "相手の生年月日を入れて、宿曜だけで相性を読めます。",
   },
 ];
 
@@ -197,8 +197,14 @@ export default function Home() {
     name: "",
     birthDate: "",
   });
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    birthDate: "",
+    gender: "" as "" | Gender,
+  });
   const [authMessage, setAuthMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
   const [reading, setReading] = useState<ReadingResult | null>(null);
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -277,6 +283,13 @@ export default function Home() {
       .maybeSingle();
     if (!error) {
       setProfile(data);
+      if (data) {
+        setProfileForm({
+          name: data.name,
+          birthDate: data.birth_date,
+          gender: data.gender ?? "",
+        });
+      }
       return;
     }
 
@@ -286,14 +299,20 @@ export default function Home() {
       .eq("id", userId)
       .maybeSingle();
     const { data: userData } = await supabase.auth.getUser();
-    setProfile(
-      fallbackData
-        ? {
-            ...fallbackData,
-            gender: parseGender(userData.user?.user_metadata?.gender),
-          }
-        : null,
-    );
+    const nextProfile = fallbackData
+      ? {
+          ...fallbackData,
+          gender: parseGender(userData.user?.user_metadata?.gender),
+        }
+      : null;
+    setProfile(nextProfile);
+    if (nextProfile) {
+      setProfileForm({
+        name: nextProfile.name,
+        birthDate: nextProfile.birth_date,
+        gender: nextProfile.gender ?? "",
+      });
+    }
   }
 
   async function loadHistory(userId: string) {
@@ -307,6 +326,45 @@ export default function Home() {
       .limit(12);
     setHistory((data as ReadingHistoryItem[] | null) ?? []);
     setHistoryBusy(false);
+  }
+
+  async function updateProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !user || !profileForm.gender) return;
+
+    setProfileBusy(true);
+    setAuthMessage("");
+    try {
+      const profilePayload = {
+        id: user.id,
+        name: profileForm.name.trim() || "未設定",
+        birth_date: profileForm.birthDate,
+        gender: profileForm.gender,
+        email: user.email ?? profile?.email ?? "",
+      };
+      const { error } = await supabase.from("profiles").upsert(profilePayload);
+      if (error) {
+        const { gender, ...fallbackPayload } = profilePayload;
+        void gender;
+        const { error: fallbackError } = await supabase.from("profiles").upsert(fallbackPayload);
+        if (fallbackError) throw fallbackError;
+      }
+
+      await supabase.auth.updateUser({
+        data: {
+          name: profilePayload.name,
+          birth_date: profilePayload.birth_date,
+          gender: profilePayload.gender,
+        },
+      });
+      await loadProfile(user.id);
+      resetDrawState();
+      setAuthMessage("登録情報を更新しました。");
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "登録情報の更新に失敗しました。");
+    } finally {
+      setProfileBusy(false);
+    }
   }
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
@@ -806,6 +864,46 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+                  {user && (
+                    <form onSubmit={updateProfile} className="mt-4 border border-white/10 bg-black/20 p-4">
+                      <div className="mb-4">
+                        <p className="text-sm font-semibold text-white">登録情報を編集</p>
+                        <p className="mt-1 text-xs leading-5 text-stone-500">
+                          ここで変更した内容は、次の占い結果から反映されます。
+                        </p>
+                      </div>
+                      <div className="grid gap-3">
+                        <Field
+                          icon={<User className="h-5 w-5" />}
+                          label="名前"
+                          autoComplete="name"
+                          value={profileForm.name}
+                          onChange={(value) => setProfileForm({ ...profileForm, name: value })}
+                          required
+                        />
+                        <Field
+                          icon={<CalendarDays className="h-5 w-5" />}
+                          label="生年月日"
+                          type="date"
+                          value={profileForm.birthDate}
+                          onChange={(value) => setProfileForm({ ...profileForm, birthDate: value })}
+                          required
+                        />
+                        <GenderSelect
+                          value={profileForm.gender}
+                          onChange={(gender) => setProfileForm({ ...profileForm, gender })}
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={profileBusy || !profileForm.name || !profileForm.birthDate || !profileForm.gender}
+                        className="mt-4 flex w-full items-center justify-center gap-2 border border-cyan-200/40 px-4 py-3 font-semibold text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-100/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
+                      >
+                        <Save className="h-5 w-5" />
+                        {profileBusy ? "更新中" : "登録情報を保存"}
+                      </button>
+                    </form>
+                  )}
                   {isCompatibilityMode ? (
                     <button
                       onClick={createCompatibilityReading}
