@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "宿曜タロット・オラクル",
-  description: "宿曜、暦、タロットで今日の選択を読むデイリーオラクル。",
+  title: "Lunar Arcana Oracle",
+  description: "生年月日タイプ、暦、タロットで今日の選択を読むデイリーオラクル。",
 };
 
 export default function RootLayout({
