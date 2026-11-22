@@ -3,6 +3,10 @@ import { generateLocalReading, generateReading } from "@/lib/openrouter";
 import { resolveShuku, type LunarCalendarDay } from "@/lib/shukuyo";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { drawTarot, majorArcana } from "@/lib/tarot";
+import { LIMITS, withinLimit } from "@/lib/input-limits";
+
+// 一度に扱うタロットの枚数の上限（長さの検査と読み取りで同じ値を使う）
+const MAX_TAROT_DRAWS = 13;
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -14,6 +18,9 @@ export async function POST(request: Request) {
 
   if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
     return NextResponse.json({ error: "name and birthDate are required" }, { status: 400 });
+  }
+  if (!withinTextLimits(body, name)) {
+    return NextResponse.json({ error: "入力が長すぎます。" }, { status: 413 });
   }
   if (partner && !userId) {
     return NextResponse.json({ error: "相性占いはログインが必要です。" }, { status: 401 });
@@ -54,6 +61,22 @@ export async function POST(request: Request) {
   return NextResponse.json({ id: null, shuku, tarot: card, reversed, tarotless, calendar, reading });
 }
 
+// LLM に渡る自由入力の長さを確かめる（通常の利用では引っかからない上限）
+function withinTextLimits(body: Record<string, unknown>, name: string) {
+  if (!withinLimit(name, LIMITS.name)) return false;
+  if (!withinLimit(String(body.spreadName || ""), LIMITS.spreadName)) return false;
+  const partner = body.partner as Record<string, unknown> | null | undefined;
+  if (partner && typeof partner === "object" && !withinLimit(String(partner.name || ""), LIMITS.name)) return false;
+  if (Array.isArray(body.tarotDraws)) {
+    for (const item of body.tarotDraws.slice(0, MAX_TAROT_DRAWS)) {
+      if (item && typeof item === "object" && !withinLimit(String((item as Record<string, unknown>).position || ""), LIMITS.position)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function parseGender(value: unknown): "male" | "female" | "other" | null {
   return value === "male" || value === "female" || value === "other" ? value : null;
 }
@@ -91,7 +114,7 @@ function parseTarotDraws(value: unknown, fallbackCardId: number, fallbackReverse
   }
 
   const parsed = value
-    .slice(0, 13)
+    .slice(0, MAX_TAROT_DRAWS)
     .map((item, index) => {
       if (!item || typeof item !== "object") return null;
       const record = item as Record<string, unknown>;
